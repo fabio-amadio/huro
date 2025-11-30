@@ -13,6 +13,7 @@
 
 #include <ament_index_cpp/get_package_share_directory.hpp>
 #include <rclcpp/rclcpp.hpp>
+#include <rosgraph_msgs/msg/clock.hpp>
 #include <unitree_go/msg/low_cmd.hpp>
 #include <unitree_go/msg/low_state.hpp>
 #include <unitree_go/msg/motor_cmd.hpp>
@@ -65,6 +66,7 @@ public:
 
     lowstate_pub_ = this->create_publisher<LowStateMsg>(ls_topic, 10);
     odom_pub_ = this->create_publisher<OdometryMsg>(odom_topic, 10);
+    clock_pub_ = this->create_publisher<rosgraph_msgs::msg::Clock>("/clock", 10);
 
     lowmcd_sub_ = this->create_subscription<LowCmdMsg>(
         params_.lowcmd_topic_name, 10,
@@ -83,7 +85,7 @@ public:
 
 protected:
   void Step() {
-    time_s_ += params_.sim_dt_ms / 1000;
+    time_s_ += params_.sim_dt_ms / 1000.0;
 
     if (params_.fix_base) {
       FixModelBase();
@@ -110,6 +112,14 @@ protected:
 
     odom_pub_->publish(odom_msg);
     lowstate_pub_->publish(lowstate_msg);
+    
+    // Publish clock for use_sim_time synchronization
+    rosgraph_msgs::msg::Clock clock_msg;
+    int32_t sec = static_cast<int32_t>(time_s_);
+    double frac = time_s_ - static_cast<double>(sec);
+    clock_msg.clock.sec = sec;
+    clock_msg.clock.nanosec = static_cast<uint32_t>(frac * 1e9);
+    clock_pub_->publish(clock_msg);
   }
 
   void LowCmdHandler(std::shared_ptr<LowCmdMsg> message) {
@@ -235,6 +245,7 @@ protected:
 
   std::shared_ptr<rclcpp::Publisher<LowStateMsg>> lowstate_pub_;
   std::shared_ptr<rclcpp::Publisher<OdometryMsg>> odom_pub_;
+  std::shared_ptr<rclcpp::Publisher<rosgraph_msgs::msg::Clock>> clock_pub_;
   std::shared_ptr<rclcpp::Subscription<LowCmdMsg>> lowmcd_sub_;
   std::shared_ptr<rclcpp::TimerBase> timer_;
 

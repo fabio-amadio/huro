@@ -70,7 +70,14 @@ class Go2PolicyController(Node):
             kd: Velocity gain/damping (default: 0.5)
             action_scale: Scale factor for policy actions (default: 0.25)
         """
-        super().__init__("go2_policy_controller")
+        super().__init__("go2_policy_controller",
+                        parameter_overrides=[rclpy.parameter.Parameter('use_sim_time', value=True)])
+
+        # Verify we're using sim time
+        use_sim_time = self.get_parameter('use_sim_time').value
+        print(f"[INFO] use_sim_time: {use_sim_time}")
+        if not use_sim_time:
+            print("[WARNING] Not using simulation time! Clock synchronization may fail.")
 
         self.step_dt = 1 / 50 # policy freq = 50Hz
         self.control_gait = 1/200 # the phase updated at 2Hz
@@ -133,8 +140,8 @@ class Go2PolicyController(Node):
             self.latest_high_state = None
             self.prev_vel = None
 
-        self.kp = 35.0  # Position gain
-        self.kd = 1.5  # Velocity gain
+        self.kp = 25.0  # Position gain
+        self.kd = 0.5  # Velocity gain
         self.action_scale = 0.5  # Scale policy output
 
         # Standing position (default joint positions but coud be different)
@@ -282,6 +289,10 @@ class Go2PolicyController(Node):
             self.mapper.default_pos_sdk
         )   + actions_sdk_order * self.action_scale
 
+        # Debug: print first joint target every 50 ticks
+        if self.tick_count % 50 == 0:
+            print(f"[DEBUG] Sending commands. Joint 0 target: {self.last_commanded_positions[0]:.3f}, action: {actions_sdk_order[0]:.3f}")
+
         cmd = LowCmd()
         cmd.head[0] = 0xFE
         cmd.head[1] = 0xEF
@@ -303,6 +314,11 @@ class Go2PolicyController(Node):
 
     def run(self):
         """Main control loop running at control_freq Hz."""
+
+        # Debug: Print every 50 calls (once per second at 50Hz)
+        if self.tick_count % 50 == 0:
+            current_time = self.get_clock().now()
+            print(f"[DEBUG] Timer fired. Tick: {self.tick_count}, Sim time: {current_time.nanoseconds / 1e9:.3f}s")
 
         # Robot in standing position for the begining
 
@@ -360,7 +376,7 @@ class Go2PolicyController(Node):
             
     def policy_control(self):
         # Get observation
-        phase = (self.phase + self.step_dt * self.control_gait) % 1
+        self.phase = (self.phase + self.step_dt * self.control_gait) % 1
         if self.high_state:
             obs = get_obs_high_state(
                 self.latest_low_state,
@@ -378,7 +394,7 @@ class Go2PolicyController(Node):
                 self.spacemouse_state,
                 height=0.30,
                 prev_actions=self.current_action,
-                phase = phase,
+                phase = self.phase,
                 mapper=self.mapper,
             )
         with torch.no_grad():
@@ -407,10 +423,11 @@ def main():
         "--training_type", type=str, default="normal", help="The type of training use (normal, asymmetric or student)"
     )
 
-    args = parser.parse_args()
+    # Parse only known args to allow ROS args to pass through
+    args, unknown = parser.parse_known_args()
 
-    # Initialize DDS communication
-    rclpy.init(args=None)
+    # Initialize DDS communication - must be called before creating nodes
+    rclpy.init()
 
     # Create controller
     node = Go2PolicyController(

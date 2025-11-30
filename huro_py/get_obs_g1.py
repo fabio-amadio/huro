@@ -6,11 +6,10 @@ from huro.msg import SpaceMouseState
 import numpy as np
 import yaml
 import os
-from huro_py.mapping import Mapper
 from huro_py.utils import rotate
+NUM_ACTIONS = 12
 
-
-def get_obs_low_state(lowstate_msg: LowState, spacemouse_msg: SpaceMouseState, height: float, prev_actions: np.array, phase: float, mapper: Mapper):
+def get_obs_low_state(lowstate_msg: LowState, spacemouse_msg: SpaceMouseState, height: float, prev_actions: np.array, phase: float, default_pos: list):
     """
     Extract observations from LowState message for RL policy.
     
@@ -36,21 +35,18 @@ def get_obs_low_state(lowstate_msg: LowState, spacemouse_msg: SpaceMouseState, h
     
     motor_states = lowstate_msg.motor_state[:12]
     
-    current_joint_pos_sdk = np.array([motor_states[i].q for i in range(12)])
-    current_joint_vel_sdk = np.array([motor_states[i].dq for i in range(12)])
-    
-    current_joint_pos_policy = mapper.remap_joints_by_name(
-        current_joint_pos_sdk, mapper.target_names, mapper.source_names, mapper.target_to_source
-    )
-    current_joint_vel_policy = mapper.remap_joints_by_name(
-        current_joint_vel_sdk, mapper.target_names, mapper.source_names, mapper.target_to_source
-    )
-    default_pos_policy = mapper.default_pos_policy
+    current_joint_pos_sdk = np.array([motor_states[i].q for i in range(NUM_ACTIONS)])
+    current_joint_vel_sdk = np.array([motor_states[i].dq for i in range(NUM_ACTIONS)])
 
     # FILLING OBS VECTOR
 
 
-    obs = np.zeros(46)
+    obs = np.zeros(47)
+    
+    # lin_vel_scale = 2.0
+    ang_vel_scale = 0.25
+    dof_pos_scale = 1.0
+    dof_vel_scale = 0.05
         
     # Base linear velocity (obs[0:3])
     
@@ -59,7 +55,7 @@ def get_obs_low_state(lowstate_msg: LowState, spacemouse_msg: SpaceMouseState, h
         lowstate_msg.imu_state.gyroscope[0],
         lowstate_msg.imu_state.gyroscope[1],
         lowstate_msg.imu_state.gyroscope[2]
-    ])
+    ]) * ang_vel_scale
     # Computing projected gravity from IMU sensor
     quat = np.array([
         lowstate_msg.imu_state.quaternion[0],  # w
@@ -73,15 +69,15 @@ def get_obs_low_state(lowstate_msg: LowState, spacemouse_msg: SpaceMouseState, h
     gravity_world = np.array([0.0, 0.0, -1.0])
 
     gravity_b = rotate(quat,gravity_world)
-    gravity_b[0] *= 2.0
-    gravity_b[1] *= 2.0
+    # gravity_b[0] *= 2.0
+    # gravity_b[1] *= 2.0
     obs[3:6] = gravity_b
     # Command velocity (obs[9:12]) - default to zero (forward, lateral, yaw rate)
     obs[6:9] = [spacemouse_msg.twist.angular.y / 2, -spacemouse_msg.twist.angular.x / 2, spacemouse_msg.twist.angular.z / 2]
     # Fill joint positions (obs[13:25]) in policy order
-    obs[9:21] = current_joint_pos_policy - default_pos_policy
+    obs[9:21] = (current_joint_pos_sdk - np.array(default_pos)) * dof_pos_scale
     # Fill joint velocities (obs[25:37]) in policy order
-    obs[21:33] = current_joint_vel_policy
+    obs[21:33] = current_joint_vel_sdk * dof_vel_scale
     # Previous actions (obs[37:49]) - default to zero
     obs[33:45] = prev_actions
     obs[45] = np.sin(2.0 * np.pi * phase)

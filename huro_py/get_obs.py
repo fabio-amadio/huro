@@ -7,7 +7,7 @@ import numpy as np
 import yaml
 import os
 from huro_py.mapping import Mapper
-from huro_py.utils import rotate
+from huro_py.utils import quat_rotate_inverse
 
 
 
@@ -73,10 +73,10 @@ def get_obs_low_state(lowstate_msg: LowState, spacemouse_msg: SpaceMouseState, h
     
     gravity_world = np.array([0.0, 0.0, -1.0])
 
-    gravity_b = rotate(quat,gravity_world)
+    gravity_b = quat_rotate_inverse(quat,gravity_world)
     # gravity_b[0] *= 2.0
     # gravity_b[1] *= 2.0
-    print(gravity_b)
+    # print(gravity_b)
     obs[3:6] = gravity_b
     # Command velocity (obs[9:12]) - default to zero (forward, lateral, yaw rate)
     obs[6:9] = [spacemouse_msg.twist.angular.y / 2, -spacemouse_msg.twist.angular.x / 2, spacemouse_msg.twist.angular.z / 2]
@@ -153,9 +153,9 @@ def get_obs_high_state(lowstate_msg: LowState, highstate_msg: SportModeState, sp
         lowstate_msg.imu_state.quaternion[3]   # z
     ])
     # Normalize quaternion to prevent drift    
-    gravity_world = np.array([0.0, 0.0, -0.91])
+    gravity_world = np.array([0.0, 0.0, -1.0])
     gravity_b = rotate(quat, gravity_world)
-    obs[6:9] = np.array([0.0, 0.0, 0.0])
+    obs[6:9] = gravity_b
     # Command velocity (obs[9:12]) - default to zero (forward, lateral, yaw rate)
     obs[9:12] = [spacemouse_msg.twist.angular.y / 2, -spacemouse_msg.twist.angular.x / 2, spacemouse_msg.twist.angular.z / 2]
     # Height command (obs[12]) - default standing height

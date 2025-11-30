@@ -28,7 +28,7 @@ from huro.msg import SpaceMouseState
 
 
 from huro_py.crc_hg import Crc
-from huro_py.get_obs import get_obs_high_state, get_obs_low_state
+from huro_py.get_obs_g1 import get_obs_low_state
 from huro_py.mapping import Mapper
 
 np.set_printoptions(precision=3)
@@ -40,7 +40,7 @@ class Go2PolicyController(Node):
     """RL Policy controller for Unitree Go2 locomotion."""
 
     def __init__(
-        self, policy_name = "policy.pt", high_state = False, training_type = "normal"
+        self, policy_name = "policy.pt", high_state = False, training_type = "normal", sim = True
     ):
         """
         Initialize the policy controller.
@@ -58,6 +58,8 @@ class Go2PolicyController(Node):
         self.step_dt = 1 / 50 # policy freq = 50Hz
         self.run_policy = False
         self.high_state = high_state
+        self.control_gait = 1/200 # the phase updated at 2Hz
+        self.phase = 0.0
 
         # Emergency mode
         self.emergency_mode = False
@@ -70,25 +72,34 @@ class Go2PolicyController(Node):
         # Store latest messages
         self.latest_low_state = None
         self.spacemouse_state = None
-
-        self.kp = 25.0  # Position gain
-        self.kd = 0.5  # Velocity gain
         self.action_scale = 0.5  # Scale policy output
         
+        if sim:        
+            self.leg_kps= [100., 100., 100., 150., 40., 40., 100., 100., 100., 150., 40., 40.]
+            self.leg_kds= [2., 2., 2., 4., 2., 2., 2., 2., 2., 4., 2., 2.]
+            self.upper_kps = [60., 40., 40.,                  
+                        40., 40., 40., 40.,  40., 40., 40., 
+                        40., 40., 40., 40.,  40., 40., 40. ]
+            self.upper_kds = [1., 1., 1.,             
+                    1., 1., 1., 1., 1., 1., 1., 
+                    1., 1., 1., 1., 1., 1., 1.  ]
         
-        self.leg_kps = [100., 100., 100., 150., 40., 40., 100., 100., 100., 150., 40., 40.]
-        self.upper_kps = [300., 300., 300.,
-                100., 100., 50., 50., 20., 20., 20.,
-                100., 100., 50., 50., 20., 20., 20.]
+        else:
+            self.leg_kds = [2., 2., 2., 4., 2., 2., 2., 2., 2., 4., 2., 2.]
+            self.upper_kds = [3., 3., 3., 
+                    2., 2., 2., 2., 1., 1., 1.,
+                    2., 2., 2., 2., 1., 1., 1.]
+            
+            self.leg_kps = [100., 100., 100., 150., 40., 40., 100., 100., 100., 150., 40., 40.]
+            self.upper_kps = [300., 300., 300.,
+                    100., 100., 50., 50., 20., 20., 20.,
+                    100., 100., 50., 50., 20., 20., 20.]
+            
         
-        self.leg_kds = [2., 2., 2., 4., 2., 2., 2., 2., 2., 4., 2., 2.]
-        self.upper_kds = [3., 3., 3., 
-                2., 2., 2., 2., 1., 1., 1.,
-                2., 2., 2., 2., 1., 1., 1.]
         # Standing position (default joint positions but coud be different)
         self.default_joint_legs = [-0.1,  0.0,  0.0,  0.3, -0.2, 0.0, 
                   -0.1,  0.0,  0.0,  0.3, -0.2, 0.0]
-        self.target_pos_upper = [ 0., 0., 0.,
+        self.target_pos_upper = [ 0.0, 0., 0.,
                     0., 0., 0., 0., 0., 0., 0.,
                     0., 0., 0., 0., 0., 0., 0.]
         self.ang_vel_scale: 0.25
@@ -107,21 +118,21 @@ class Go2PolicyController(Node):
                 elif training_type == "student":
                     policy_name = "policy_student.pt"
                 else:
-                    policy_name = "policy_low_state.pt"
+                    policy_name = "motion.pt"
             else:
                 policy_name = "policy_teacher.pt"
                 
-        # policy_path = os.path.join(share, "resources", "models", "g1", policy_name)
-        # self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        policy_path = os.path.join(share, "resources", "models", "g1", policy_name)
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-        # print(f"[INFO] Loading policy from: {policy_name}")
-        # print(f"[INFO] Using device: {self.device}")
+        print(f"[INFO] Loading policy from: {policy_name}")
+        print(f"[INFO] Using device: {self.device}")
 
-        # if not os.path.exists(policy_path):
-        #     raise FileNotFoundError(f"Policy file not found: {policy_path}")
-        # self.policy = torch.jit.load(policy_path, map_location=self.device)
-        # self.policy.eval()
-        # print("[INFO] Policy loaded successfully")
+        if not os.path.exists(policy_path):
+            raise FileNotFoundError(f"Policy file not found: {policy_path}")
+        self.policy = torch.jit.load(policy_path, map_location=self.device)
+        self.policy.eval()
+        print("[INFO] Policy loaded successfully")
 
     
         
@@ -229,8 +240,8 @@ class Go2PolicyController(Node):
 
         for j in range(G1_NUM_MOTOTS):
             target_pos = default_pos[j]
-            cmd.motor_cmd[j].q = 0.0
-            # cmd.motor_cmd[j].q = init_dof_pos[j] * (1 - alpha) + target_pos * alpha
+            # cmd.motor_cmd[j].q = 0.0
+            cmd.motor_cmd[j].q = init_dof_pos[j] * (1 - alpha) + target_pos * alpha
             cmd.motor_cmd[j].dq = 0.
             cmd.motor_cmd[j].kp = kps[j]
             cmd.motor_cmd[j].kd = kds[j]
@@ -259,7 +270,7 @@ class Go2PolicyController(Node):
             cmd.motor_cmd[i].kd = self.leg_kds[i]
             cmd.motor_cmd[i].tau = 0.
 
-        for i in range(len(G1_NUM_MOTOTS - NUM_ACTIONS)):
+        for i in range(G1_NUM_MOTOTS - NUM_ACTIONS):
             cmd.motor_cmd[i + NUM_ACTIONS].q = self.target_pos_upper[i]
             cmd.motor_cmd[i + NUM_ACTIONS].dq = 0.
             cmd.motor_cmd[i + NUM_ACTIONS].kp = self.upper_kps[i]
@@ -280,7 +291,7 @@ class Go2PolicyController(Node):
             if self.high_state:
                 cond = self.latest_low_state is not None and self.latest_high_state is not None and self.spacemouse_state is not None
             else:
-                cond = self.latest_low_state is not None and self.spacemouse_state is not None
+                cond = self.latest_low_state is not None # and self.spacemouse_state is not None
             if cond:
                 self.process_control_step()
             else:
@@ -324,11 +335,12 @@ class Go2PolicyController(Node):
         # Run policy
         elif (
             self.curr_time - self.start_time
-        ).nanoseconds * 1e-9 >= self.time_to_stand and self.run_policy:
+        ).nanoseconds * 1e-9 >= self.time_to_stand: # and self.run_policy:
             self.policy_control()
             
     def policy_control(self):
         # Get observation
+        phase = (self.phase + self.step_dt * self.control_gait) % 1
         if self.high_state:
             obs = get_obs_high_state(
                 self.latest_low_state,
@@ -345,10 +357,12 @@ class Go2PolicyController(Node):
                 self.spacemouse_state,
                 height=0.3,
                 prev_actions=self.current_action,
+                phase = phase,
+                default_pos=self.default_joint_legs
             )
         with torch.no_grad():
             obs_tensor = torch.tensor(
-                obs, dtype=torch.float32, device=self.device
+                obs, dtype=torch.float32, device="cpu"
             ).unsqueeze(0)
             actions_tensor = self.policy(obs_tensor)
         actions_policy_order = actions_tensor.squeeze(0).cpu().numpy()
@@ -371,6 +385,10 @@ def main():
     parser.add_argument(
         "--training_type", type=str, default="normal", help="The type of training use (normal, asymmetric or student)"
     )
+    
+    parser.add_argument(
+        "--sim", type=bool, default=True, help="Wether to use simulation or real robot (changes kps and kds)"
+    )
 
     args = parser.parse_args()
 
@@ -381,7 +399,8 @@ def main():
     node = Go2PolicyController(
         policy_name=args.policy,
         high_state= args.high_state,
-        training_type = args.training_type
+        training_type = args.training_type,
+        sim = args.sim
     )
 
     try:
