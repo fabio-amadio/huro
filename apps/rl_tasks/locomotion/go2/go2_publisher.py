@@ -397,6 +397,16 @@ class Go2PolicyController(Node):
                 phase = self.phase,
                 mapper=self.mapper,
             )
+        
+        # Debug: log key observations every 50 ticks to detect drift
+        if self.tick_count % 50 == 0:
+            print(f"[TICK {self.tick_count}] ang_vel: [{obs[0]:.3f}, {obs[1]:.3f}, {obs[2]:.3f}], "
+                  f"gravity: [{obs[3]:.3f}, {obs[4]:.3f}, {obs[5]:.3f}], "
+                  f"cmd_vel: [{obs[6]:.3f}, {obs[7]:.3f}, {obs[8]:.3f}], "
+                  f"phase: [{obs[46]:.3f}, {obs[47]:.3f}]")
+            print(f"         joint_pos[0:3]: [{obs[10]:.3f}, {obs[11]:.3f}, {obs[12]:.3f}], "
+                  f"joint_vel[0:3]: [{obs[22]:.3f}, {obs[23]:.3f}, {obs[24]:.3f}]")
+        
         with torch.no_grad():
             obs_tensor = torch.tensor(
                 obs, dtype=torch.float32, device=self.device

@@ -68,8 +68,6 @@ def get_obs_low_state(lowstate_msg: LowState, spacemouse_msg: SpaceMouseState, h
         lowstate_msg.imu_state.quaternion[2],  # y
         lowstate_msg.imu_state.quaternion[3]   # z
     ])
-    # Normalize quaternion to prevent drift
-  
     
     gravity_world = np.array([0.0, 0.0, -1.0])
 
@@ -78,9 +76,10 @@ def get_obs_low_state(lowstate_msg: LowState, spacemouse_msg: SpaceMouseState, h
     # gravity_b[1] *= 2.0
     # print(gravity_b)
     obs[3:6] = gravity_b
-    # Command velocity (obs[9:12]) - default to zero (forward, lateral, yaw rate)
-    obs[6:9] = [spacemouse_msg.twist.angular.y / 2, -spacemouse_msg.twist.angular.x / 2, spacemouse_msg.twist.angular.z / 2]
-    # Height command (obs[12]) - default standing height
+    # Command velocity (obs[6:9]) - forward, lateral, yaw rate in m/s and rad/s
+    # Use moderate velocity for stable walking (policy trained around 0.3-0.5 m/s)
+    obs[6:9] = [0.3, 0.0, 0.0]  # [forward m/s, lateral m/s, yaw rad/s]
+    # Height command (obs[9]) - default standing height
     obs[9] = height
     # Fill joint positions (obs[13:25]) in policy order
     obs[10:22] = current_joint_pos_policy - default_pos_policy
@@ -152,9 +151,9 @@ def get_obs_high_state(lowstate_msg: LowState, highstate_msg: SportModeState, sp
         lowstate_msg.imu_state.quaternion[2],  # y
         lowstate_msg.imu_state.quaternion[3]   # z
     ])
-    # Normalize quaternion to prevent drift    
+    
     gravity_world = np.array([0.0, 0.0, -1.0])
-    gravity_b = rotate(quat, gravity_world)
+    gravity_b = quat_rotate_inverse(quat, gravity_world)
     obs[6:9] = gravity_b
     # Command velocity (obs[9:12]) - default to zero (forward, lateral, yaw rate)
     obs[9:12] = [spacemouse_msg.twist.angular.y / 2, -spacemouse_msg.twist.angular.x / 2, spacemouse_msg.twist.angular.z / 2]
