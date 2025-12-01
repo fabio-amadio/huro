@@ -11,7 +11,7 @@ TO RUN:
 ros2 launch huro go2_rviz.launch.py
 ros2 run huro spacemouse_publisher.py
 ros2 run huro sim_go2
-ros2 run huro go2_publisher.py --
+ros2 run huro go2_publisher.py --training_task asymmetric
 
 """
 import rclpy

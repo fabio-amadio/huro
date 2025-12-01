@@ -28,7 +28,7 @@ from huro.msg import SpaceMouseState
 
 
 from huro_py.crc_go import Crc
-from huro_py.get_obs import get_obs_high_state, get_obs_low_state
+from huro_py.get_obs import  get_obs_low_state
 from huro_py.utils import Mapper
 
 np.set_printoptions(precision=3)
@@ -38,7 +38,7 @@ class Go2PolicyController(Node):
     """RL Policy controller for Unitree Go2 locomotion."""
 
     def __init__(
-        self, policy_name = "policy.pt", high_state = False, training_type = "normal", sim = True
+        self, policy_name = "policy.pt", training_type = "normal", sim = True
     ):
         """
         Initialize the policy controller.
@@ -56,7 +56,7 @@ class Go2PolicyController(Node):
             params.append(rclpy.parameter.Parameter('use_sim_time', value=True))
         super().__init__("go2_policy_controller",
                         parameter_overrides=params)
-        # Verify we're using sim time
+        # Verify we're using sim time if the sim param is set to True
         use_sim_time = self.get_parameter('use_sim_time').value
         print(f"[INFO] use_sim_time: {use_sim_time}")
 
@@ -64,7 +64,6 @@ class Go2PolicyController(Node):
         self.control_gait = 1/200 # the phase updated at 2Hz
         self.phase = 0.0
         self.run_policy = False
-        self.high_state = high_state
 
         # Emergency mode
         self.emergency_mode = False
@@ -75,16 +74,13 @@ class Go2PolicyController(Node):
         share = get_package_share_directory("huro")
         
         if policy_name is None:
-            if not self.high_state:
-                if training_type == "asymmetric":
-                    policy_name = "policy_asymmetric5.pt"
-                elif training_type == "student":
-                    policy_name = "policy_student.pt"
-                else:
-                    policy_name = "policy_low_state.pt"
+            if training_type == "asymmetric":
+                policy_name = "policy_asymmetric5.pt"
+            elif training_type == "student":
+                policy_name = "policy_student.pt"
             else:
-                policy_name = "policy_teacher.pt"
-                
+                policy_name = "policy_low_state.pt"
+            
         policy_path = os.path.join(share, "resources", "models", "go2", policy_name)
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -116,8 +112,6 @@ class Go2PolicyController(Node):
         # Store latest messages
         self.latest_low_state = None
         self.spacemouse_state = None
-        if self.high_state:
-            self.latest_high_state = None
 
         self.kp = 25.0  # Position gain
         self.kd = 0.5  # Velocity gain
@@ -159,13 +153,7 @@ class Go2PolicyController(Node):
         self.low_state_sub = self.create_subscription(
             LowState, "/lowstate", self.low_state_callback, 10
         )
-
-        # Get high lovel data from robot
-        if self.high_state:
-            self.high_state_sub = self.create_subscription(
-                SportModeState, "/sportmodestate", self.high_state_callback, 10
-            )
-
+        
         self.motion_pub = self.create_publisher(
             Request, "/api/motion_switcher/request", 10
         )
@@ -180,10 +168,6 @@ class Go2PolicyController(Node):
 
         print(f"  Policy controller initialized")
         print(f"  Policy runs at: {1 / self.step_dt}Hz")
-
-    def high_state_callback(self, msg: SportModeState):
-        """Log high state message."""
-        self.latest_high_state = msg
 
     def low_state_callback(self, msg: LowState):
         """Log low state message."""
@@ -297,12 +281,7 @@ class Go2PolicyController(Node):
         # Robot in standing position for the begining
 
         try:
-            # Process current state (callbacks update latest_low_state and latest_high_state)
-            if self.high_state:
-                cond = self.latest_low_state is not None and self.latest_high_state is not None and self.spacemouse_state is not None
-            else:
-                cond = self.latest_low_state is not None and self.spacemouse_state is not None
-            if cond:
+            if self.latest_low_state is not None and self.spacemouse_state is not None:
                 self.process_control_step()
             else:
                 print("Waiting for robot state...")
@@ -348,27 +327,17 @@ class Go2PolicyController(Node):
             self.policy_control()
             
     def policy_control(self):
-        # Get observation
+        
         self.phase = (self.phase + self.step_dt * self.control_gait) % 1
-        if self.high_state:
-            obs = get_obs_high_state(
-                self.latest_low_state,
-                self.latest_high_state,
-                self.spacemouse_state,
-                height=0.40,
-                prev_actions=self.current_action,
-                mapper=self.mapper,
-                previous_vel= self.prev_vel
-            )
-        else:
-            obs = get_obs_low_state(
-                self.latest_low_state,
-                self.spacemouse_state,
-                height=0.40,
-                prev_actions=self.current_action,
-                phase = self.phase,
-                mapper=self.mapper,
-            )
+        
+        obs = get_obs_low_state(
+            self.latest_low_state,
+            self.spacemouse_state,
+            height=0.40,
+            prev_actions=self.current_action,
+            phase = self.phase,
+            mapper=self.mapper,
+        )
         with torch.no_grad():
             obs_tensor = torch.tensor(
                 obs, dtype=torch.float32, device=self.device
@@ -385,10 +354,6 @@ def main():
     parser = argparse.ArgumentParser(description="Go2 RL Policy Controller")
     parser.add_argument(
         "--policy", type=str, default=None, help="Path to policy.pt file"
-    )
-
-    parser.add_argument(
-        "--high_state", type=bool, default=False, help="Wether to use base_vel sent by sportsmode state or not"
     )
     
     parser.add_argument(
@@ -408,8 +373,8 @@ def main():
     # Create controller
     node = Go2PolicyController(
         policy_name=args.policy,
-        high_state= args.high_state,
-        training_type = args.training_type
+        training_type = args.training_type,
+        sim = args.sim
     )
 
     try:
