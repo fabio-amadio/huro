@@ -6,7 +6,7 @@ from huro.msg import SpaceMouseState
 import numpy as np
 import yaml
 import os
-from huro_py.utils import rotate
+from huro_py.utils import quat_rotate_inverse
 NUM_ACTIONS = 12
 
 def get_obs_low_state(lowstate_msg: LowState, spacemouse_msg: SpaceMouseState, height: float, prev_actions: np.array, phase: float, default_pos: list):
@@ -68,7 +68,7 @@ def get_obs_low_state(lowstate_msg: LowState, spacemouse_msg: SpaceMouseState, h
     
     gravity_world = np.array([0.0, 0.0, -1.0])
 
-    gravity_b = rotate(quat,gravity_world)
+    gravity_b = quat_rotate_inverse(quat,gravity_world)
     # gravity_b[0] *= 2.0
     # gravity_b[1] *= 2.0
     obs[3:6] = gravity_b

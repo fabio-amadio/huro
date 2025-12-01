@@ -76,8 +76,6 @@ class Go2PolicyController(Node):
         # Verify we're using sim time
         use_sim_time = self.get_parameter('use_sim_time').value
         print(f"[INFO] use_sim_time: {use_sim_time}")
-        if not use_sim_time:
-            print("[WARNING] Not using simulation time! Clock synchronization may fail.")
 
         self.step_dt = 1 / 50 # policy freq = 50Hz
         self.control_gait = 1/200 # the phase updated at 2Hz
@@ -89,7 +87,6 @@ class Go2PolicyController(Node):
         self.emergency_mode = False
         self.emergency_mode_start_time = None
         self.last_commanded_positions = None
-
 
         # Load policy model
         share = get_package_share_directory("huro")
@@ -397,16 +394,6 @@ class Go2PolicyController(Node):
                 phase = self.phase,
                 mapper=self.mapper,
             )
-        
-        # Debug: log key observations every 50 ticks to detect drift
-        if self.tick_count % 50 == 0:
-            print(f"[TICK {self.tick_count}] ang_vel: [{obs[0]:.3f}, {obs[1]:.3f}, {obs[2]:.3f}], "
-                  f"gravity: [{obs[3]:.3f}, {obs[4]:.3f}, {obs[5]:.3f}], "
-                  f"cmd_vel: [{obs[6]:.3f}, {obs[7]:.3f}, {obs[8]:.3f}], "
-                  f"phase: [{obs[46]:.3f}, {obs[47]:.3f}]")
-            print(f"         joint_pos[0:3]: [{obs[10]:.3f}, {obs[11]:.3f}, {obs[12]:.3f}], "
-                  f"joint_vel[0:3]: [{obs[22]:.3f}, {obs[23]:.3f}, {obs[24]:.3f}]")
-        
         with torch.no_grad():
             obs_tensor = torch.tensor(
                 obs, dtype=torch.float32, device=self.device

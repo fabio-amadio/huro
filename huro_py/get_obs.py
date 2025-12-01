@@ -77,8 +77,12 @@ def get_obs_low_state(lowstate_msg: LowState, spacemouse_msg: SpaceMouseState, h
     # print(gravity_b)
     obs[3:6] = gravity_b
     # Command velocity (obs[6:9]) - forward, lateral, yaw rate in m/s and rad/s
-    # Use moderate velocity for stable walking (policy trained around 0.3-0.5 m/s)
-    obs[6:9] = [0.3, 0.0, 0.0]  # [forward m/s, lateral m/s, yaw rad/s]
+    # SpaceMouse angular values are already in appropriate range, use directly
+    obs[6:9] = [
+        spacemouse_msg.twist.angular.y,      # forward velocity
+        -spacemouse_msg.twist.angular.x,     # lateral velocity (flip for correct direction)
+        spacemouse_msg.twist.angular.z       # yaw rate
+    ]
     # Height command (obs[9]) - default standing height
     obs[9] = height
     # Fill joint positions (obs[13:25]) in policy order

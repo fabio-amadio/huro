@@ -25,11 +25,11 @@ import time
 from unitree_api.msg import Request
 from unitree_hg.msg import LowCmd, LowState
 from huro.msg import SpaceMouseState
-
+from rcl_interfaces.srv import SetParameters
+from rcl_interfaces.msg import Parameter, ParameterType, ParameterValue
 
 from huro_py.crc_hg import Crc
 from huro_py.get_obs_g1 import get_obs_low_state
-from huro_py.mapping import Mapper
 
 np.set_printoptions(precision=3)
 G1_NUM_MOTOTS = 29
@@ -65,6 +65,9 @@ class Go2PolicyController(Node):
         self.emergency_mode = False
         self.emergency_mode_start_time = None
         self.last_commanded_positions = None
+        
+        # Track if we've unfixed the base
+        self.base_unfixed = False
         
         # Store latest action (for use between policy updates)
         self.current_action = np.zeros(12)
@@ -163,6 +166,11 @@ class Go2PolicyController(Node):
         req.header.identity.api_id = ROBOT_MOTION_SWITCHER_API_RELEASEMODE
         self.motion_pub.publish(req)
 
+        # Create service client to control sim_node parameters
+        self.sim_param_client = self.create_client(SetParameters, '/sim_node/set_parameters')
+        self.get_logger().info('Waiting for sim_node parameter service...')
+        self.sim_param_client.wait_for_service(timeout_sec=5.0)
+
         time.sleep(1)
 
         self.timer = self.create_timer(self.step_dt, self.run)
@@ -177,6 +185,34 @@ class Go2PolicyController(Node):
     def spacemouse_callback(self, msg: SpaceMouseState):
         """Log spacemouse state"""
         self.spacemouse_state = msg
+
+    def unfix_sim_base(self):
+        """Send request to sim_node to unfix the robot base."""
+        if not self.sim_param_client.service_is_ready():
+            self.get_logger().warn('sim_node parameter service not available')
+            return
+        
+        # Create parameter to set fix_base = False
+        param = Parameter()
+        param.name = 'fix_base'
+        param.value = ParameterValue(type=ParameterType.PARAMETER_BOOL, bool_value=False)
+        
+        request = SetParameters.Request()
+        request.parameters = [param]
+        
+        future = self.sim_param_client.call_async(request)
+        future.add_done_callback(self._unfix_base_callback)
+    
+    def _unfix_base_callback(self, future):
+        """Callback for base unfixing service response."""
+        try:
+            response = future.result()
+            if response.results[0].successful:
+                self.get_logger().info('✓ Robot base unfixed - starting locomotion!')
+            else:
+                self.get_logger().error(f'Failed to unfix base: {response.results[0].reason}')
+        except Exception as e:
+            self.get_logger().error(f'Service call failed: {e}')
 
     def emergency_mode_control(self):
         """Smoothly reduce gains and torque to zero over release_duration."""
@@ -336,6 +372,10 @@ class Go2PolicyController(Node):
         elif (
             self.curr_time - self.start_time
         ).nanoseconds * 1e-9 >= self.time_to_stand: # and self.run_policy:
+            # Unfix the base once when transitioning to policy control
+            if not self.base_unfixed:
+                self.unfix_sim_base()
+                self.base_unfixed = True
             self.policy_control()
             
     def policy_control(self):

@@ -72,6 +72,13 @@ public:
         params_.lowcmd_topic_name, 10,
         std::bind(&SimNode::LowCmdHandler, this, std::placeholders::_1));
 
+    // Declare fix_base as a ROS2 parameter
+    this->declare_parameter("fix_base", params_.fix_base);
+    
+    // Set up parameter callback to allow runtime changes
+    param_callback_handle_ = this->add_on_set_parameters_callback(
+        std::bind(&SimNode::ParametersCallback, this, std::placeholders::_1));
+
     // 500Hz control loop
     timer_ =
         this->create_wall_timer(std::chrono::milliseconds(params_.sim_dt_ms),
@@ -133,6 +140,22 @@ protected:
       kp_[i] = static_cast<mjtNum>(message->motor_cmd[i].kp);
       kd_[i] = static_cast<mjtNum>(message->motor_cmd[i].kd);
     }
+  }
+
+  rcl_interfaces::msg::SetParametersResult
+  ParametersCallback(const std::vector<rclcpp::Parameter> &parameters) {
+    rcl_interfaces::msg::SetParametersResult result;
+    result.successful = true;
+    
+    for (const auto &param : parameters) {
+      if (param.get_name() == "fix_base") {
+        params_.fix_base = param.as_bool();
+        RCLCPP_INFO(this->get_logger(), "fix_base changed to: %s", 
+                    params_.fix_base ? "true" : "false");
+      }
+    }
+    
+    return result;
   }
 
   void FixModelBase() {
@@ -248,6 +271,7 @@ protected:
   std::shared_ptr<rclcpp::Publisher<rosgraph_msgs::msg::Clock>> clock_pub_;
   std::shared_ptr<rclcpp::Subscription<LowCmdMsg>> lowmcd_sub_;
   std::shared_ptr<rclcpp::TimerBase> timer_;
+  rclcpp::node_interfaces::OnSetParametersCallbackHandle::SharedPtr param_callback_handle_;
 
   mjModel *mj_model_;
   mjData *mj_data_;
