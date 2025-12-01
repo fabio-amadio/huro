@@ -73,3 +73,14 @@ ros2 run huro sim_ROBOT
 ```
 
 replacing robot with either "g1" or "go2".
+
+### Example to run a policy for go2 in simulation:
+
+```bash
+colcon build
+source setup_uri.sh lo
+ros2 launch huro go2_rviz.launch.py
+ros2 run huro spacemouse_publisher.py
+ros2 run huro sim_go2
+ros2 run huro go2_publisher.py --training_task asymmetric
+```
