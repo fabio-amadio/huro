@@ -11,27 +11,8 @@ TO RUN:
 ros2 launch huro go2_rviz.launch.py
 ros2 run huro spacemouse_publisher.py
 ros2 run huro sim_go2
-ros2 run huro go2_publisher.py
+ros2 run huro go2_publisher.py --training_task asymmetric
 
-
-python run_policy.py \
-    --vel-x -0.5 \
-    --vel-y 0.1 \
-    --vel-yaw 0.3 \
-    --kd 0.5 \
-    --kp 25.0
-
-Or with all parameters:
-
-python run_policy.py \
-    --policy policy.pt \
-    --vel-x 0.3 \
-    --vel-y 0.0 \
-    --vel-yaw 0.0 \
-    --action-scale 0.5 \
-    --kp 25.0 \
-    --kd 0.5 \
-    --control-freq 200
 """
 import rclpy
 from rclpy.node import Node
@@ -48,7 +29,7 @@ from huro.msg import SpaceMouseState
 
 from huro_py.crc_go import Crc
 from huro_py.get_obs import get_obs_high_state, get_obs_low_state
-from huro_py.mapping import Mapper
+from huro_py.utils import Mapper
 
 np.set_printoptions(precision=3)
 
@@ -57,7 +38,7 @@ class Go2PolicyController(Node):
     """RL Policy controller for Unitree Go2 locomotion."""
 
     def __init__(
-        self, policy_name = "policy.pt", high_state = False, training_type = "normal"
+        self, policy_name = "policy.pt", high_state = False, training_type = "normal", sim = True
     ):
         """
         Initialize the policy controller.
@@ -70,9 +51,11 @@ class Go2PolicyController(Node):
             kd: Velocity gain/damping (default: 0.5)
             action_scale: Scale factor for policy actions (default: 0.25)
         """
+        params = []
+        if sim == True:
+            params.append(rclpy.parameter.Parameter('use_sim_time', value=True))
         super().__init__("go2_policy_controller",
-                        parameter_overrides=[rclpy.parameter.Parameter('use_sim_time', value=True)])
-
+                        parameter_overrides=params)
         # Verify we're using sim time
         use_sim_time = self.get_parameter('use_sim_time').value
         print(f"[INFO] use_sim_time: {use_sim_time}")
@@ -135,7 +118,6 @@ class Go2PolicyController(Node):
         self.spacemouse_state = None
         if self.high_state:
             self.latest_high_state = None
-            self.prev_vel = None
 
         self.kp = 25.0  # Position gain
         self.kd = 0.5  # Velocity gain
@@ -159,7 +141,7 @@ class Go2PolicyController(Node):
             ],
             dtype=float,
         )
-        self.time_to_stand = 3.0  # Time to reach the standing position
+        self.time_to_stand = 4.0  # Time to reach the standing position
 
         # Statistics - initialize BEFORE callbacks
         self.tick_count = 0
@@ -286,10 +268,6 @@ class Go2PolicyController(Node):
             self.mapper.default_pos_sdk
         )   + actions_sdk_order * self.action_scale
 
-        # Debug: print first joint target every 50 ticks
-        if self.tick_count % 50 == 0:
-            print(f"[DEBUG] Sending commands. Joint 0 target: {self.last_commanded_positions[0]:.3f}, action: {actions_sdk_order[0]:.3f}")
-
         cmd = LowCmd()
         cmd.head[0] = 0xFE
         cmd.head[1] = 0xEF
@@ -315,7 +293,6 @@ class Go2PolicyController(Node):
         # Debug: Print every 50 calls (once per second at 50Hz)
         if self.tick_count % 50 == 0:
             current_time = self.get_clock().now()
-            print(f"[DEBUG] Timer fired. Tick: {self.tick_count}, Sim time: {current_time.nanoseconds / 1e9:.3f}s")
 
         # Robot in standing position for the begining
 
@@ -363,12 +340,11 @@ class Go2PolicyController(Node):
         elif (
             self.curr_time - self.start_time
         ).nanoseconds * 1e-9 <= self.time_to_stand:
-            print((self.curr_time - self.start_time).nanoseconds * 1e-9)
             self.stand_control()
         # Run policy
         elif (
             self.curr_time - self.start_time
-        ).nanoseconds * 1e-9 >= self.time_to_stand:# and self.run_policy:
+        ).nanoseconds * 1e-9 >= self.time_to_stand:# and self.run_policy:            
             self.policy_control()
             
     def policy_control(self):
@@ -379,17 +355,16 @@ class Go2PolicyController(Node):
                 self.latest_low_state,
                 self.latest_high_state,
                 self.spacemouse_state,
-                height=0.30,
+                height=0.40,
                 prev_actions=self.current_action,
                 mapper=self.mapper,
                 previous_vel= self.prev_vel
             )
-            self.prev_vel = obs[0:3]
         else:
             obs = get_obs_low_state(
                 self.latest_low_state,
                 self.spacemouse_state,
-                height=0.30,
+                height=0.40,
                 prev_actions=self.current_action,
                 phase = self.phase,
                 mapper=self.mapper,
@@ -418,6 +393,10 @@ def main():
     
     parser.add_argument(
         "--training_type", type=str, default="normal", help="The type of training use (normal, asymmetric or student)"
+    )
+    
+    parser.add_argument(
+        "--sim", type=bool, default=True, help="Wether to use simulation or real robot"
     )
 
     # Parse only known args to allow ROS args to pass through

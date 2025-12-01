@@ -6,7 +6,7 @@ from huro.msg import SpaceMouseState
 import numpy as np
 import yaml
 import os
-from huro_py.mapping import Mapper
+from huro_py.utils import Mapper
 from huro_py.utils import quat_rotate_inverse
 
 
