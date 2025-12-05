@@ -52,7 +52,9 @@ def get_obs_low_state(lowstate_msg: LowState, spacemouse_msg: SpaceMouseState, h
 
 
     obs = np.zeros(48)
-        
+    print(f"foot_force = {lowstate_msg.foot_force[0]} ,{lowstate_msg.foot_force[1]} ,{lowstate_msg.foot_force[2]}, {lowstate_msg.foot_force[3]}")
+    print(f"foot_force_est = {lowstate_msg.foot_force_est[0]} ,{lowstate_msg.foot_force_est[1]} ,{lowstate_msg.foot_force_est[2]}, {lowstate_msg.foot_force_est[3]}")
+    
     # Base linear velocity (obs[0:3])
     
     # Base angular velocity (gyroscope) (obs[0:3])
