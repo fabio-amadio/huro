@@ -24,14 +24,15 @@ def get_obs_low_state(lowstate_msg: LowState, controller_msg, height: float, pre
         
     Observation structure (49 dimensions):
     - obs[0:3]   : Base angular velocity (from IMU) 
-    - obs[3:7]   : Gravity direction (from IMU)
-    - obs[7:10]  : Command velocity (x, y, yaw)
-    - obs[10]    : Height command
-    - obs[11:23] : Joint positions relative to default (12 joints)
-    - obs[23:35] : Joint velocities (12 joints)
-    - obs[35:47] : Previous actions (12 values)
+    - obs[3:6]   : Gravity direction (from IMU)
+    - obs[6:9]  : Command velocity (x, y, yaw)
+    - obs[9]    : Height command
+    - obs[10:22] : Joint positions relative to default (12 joints)
+    - obs[22:34] : Joint velocities (12 joints)
+    - obs[34:46] : Previous actions (12 values)
+    - obs[46:48] : Phases
+    - obs[48:52] : Foot contacts
     """
-    
     
     # MAPPING ROBOT -> POLICY
     
@@ -49,11 +50,7 @@ def get_obs_low_state(lowstate_msg: LowState, controller_msg, height: float, pre
     default_pos_policy = mapper.default_pos_policy
 
     # FILLING OBS VECTOR
-
-
-    obs = np.zeros(48)
-    print(f"foot_force = {lowstate_msg.foot_force[0]} ,{lowstate_msg.foot_force[1]} ,{lowstate_msg.foot_force[2]}, {lowstate_msg.foot_force[3]}")
-    print(f"foot_force_est = {lowstate_msg.foot_force_est[0]} ,{lowstate_msg.foot_force_est[1]} ,{lowstate_msg.foot_force_est[2]}, {lowstate_msg.foot_force_est[3]}")
+    obs = np.zeros(52)
     
     # Base linear velocity (obs[0:3])
     
@@ -74,12 +71,9 @@ def get_obs_low_state(lowstate_msg: LowState, controller_msg, height: float, pre
     gravity_world = np.array([0.0, 0.0, -1.0])
 
     gravity_b = quat_rotate_inverse(quat,gravity_world)
-    # gravity_b[0] *= 2.0
-    # gravity_b[1] *= 2.0
-    # print(gravity_b)
+
     obs[3:6] = gravity_b
-    # Command velocity (obs[6:9]) - forward, lateral, yaw rate in m/s and rad/s
-    # SpaceMouse angular values are already in appropriate range, use directly
+
     if isinstance(controller_msg, SpaceMouseState):
         obs[6:9] = [
             controller_msg.twist.angular.y,      # forward velocity
@@ -101,8 +95,14 @@ def get_obs_low_state(lowstate_msg: LowState, controller_msg, height: float, pre
     obs[22:34] = current_joint_vel_policy
     # Previous actions (obs[37:49]) - default to zero
     obs[34:46] = prev_actions
-    # obs[46] = np.sin(2.0 * np.pi * phase)
-    # obs[47] = np.cos(2.0 * np.pi * phase)
+    obs[46] = np.sin(2.0 * np.pi * phase)
+    obs[47] = np.cos(2.0 * np.pi * phase)
+    obs[48:52] = [
+        float(lowstate_msg.foot_force[0]>30),
+        float(lowstate_msg.foot_force[1]>30),
+        float(lowstate_msg.foot_force[2]>30),
+        float(lowstate_msg.foot_force[3]>30)
+    ]
         
     return obs
 

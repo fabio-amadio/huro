@@ -77,7 +77,7 @@ class Go2PolicyController(Node):
         
         if policy_name is None:
             if training_type == "asymmetric":
-                policy_name = "policy_asymmetric5.pt"
+                policy_name = "policy_asymmetric6.pt"
             elif training_type == "student":
                 policy_name = "policy_student.pt"
             else:
@@ -141,7 +141,6 @@ class Go2PolicyController(Node):
 
         # Statistics - initialize BEFORE callbacks
         self.tick_count = 0
-        self.start_time = self.get_clock().now()
 
         # Initialize communication
         self.low_cmd_pub = self.create_publisher(LowCmd, "/lowcmd", 10)
@@ -283,15 +282,11 @@ class Go2PolicyController(Node):
 
     def run(self):
         """Main control loop running at control_freq Hz."""
-
-        # Debug: Print every 50 calls (once per second at 50Hz)
-        if self.tick_count % 50 == 0:
-            current_time = self.get_clock().now()
-
-        # Robot in standing position for the begining
-
+        
         try:
             if self.latest_low_state is not None and self.controller_state is not None:
+                if self.tick_count ==0:
+                    self.start_time = self.get_clock().now()
                 self.process_control_step()
             else:
                 print("Waiting for robot state...")
@@ -313,6 +308,7 @@ class Go2PolicyController(Node):
         """Process one control step (called at control_freq Hz)."""
         self.tick_count += 1
         self.curr_time = self.get_clock().now()
+    
 
         if self.use_spacemouse:
             emergency_cond = self.controller_state.button_1_pressed and self.controller_state.button_2_pressed and self.run_policy or self.emergency_mode
@@ -322,22 +318,22 @@ class Go2PolicyController(Node):
             policy_run_cond = self.controller_state.buttons[8]
 
         if (
-            emergency_cond
+            emergency_cond or self.emergency_mode
         ):
             if not self.emergency_mode:
                 self.emergency_mode_start_time = self.get_clock().now()
             self.emergency_mode = True
             self.emergency_mode_control()
-        elif policy_run_cond:
+        
+        if policy_run_cond:
             self.run_policy = True
-        elif (
+        
+        if (
             self.curr_time - self.start_time
         ).nanoseconds * 1e-9 <= self.time_to_stand:
             self.stand_control()
         # Run policy
-        elif (
-            self.curr_time - self.start_time
-        ).nanoseconds * 1e-9 >= self.time_to_stand:# and self.run_policy:            
+        elif (self.curr_time - self.start_time).nanoseconds * 1e-9 >= self.time_to_stand: # and self.run_policy 
             self.policy_control()
             
     def policy_control(self):
