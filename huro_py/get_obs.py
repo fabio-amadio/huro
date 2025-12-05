@@ -11,7 +11,7 @@ from huro_py.utils import quat_rotate_inverse
 
 
 
-def get_obs_low_state(lowstate_msg: LowState, spacemouse_msg: SpaceMouseState, height: float, prev_actions: np.array, phase: float, mapper: Mapper):
+def get_obs_low_state(lowstate_msg: LowState, controller_msg, height: float, prev_actions: np.array, phase: float, mapper: Mapper):
     """
     Extract observations from LowState message for RL policy.
     
@@ -80,21 +80,29 @@ def get_obs_low_state(lowstate_msg: LowState, spacemouse_msg: SpaceMouseState, h
     obs[3:6] = gravity_b
     # Command velocity (obs[6:9]) - forward, lateral, yaw rate in m/s and rad/s
     # SpaceMouse angular values are already in appropriate range, use directly
-    obs[6:9] = [
-        spacemouse_msg.twist.angular.y,      # forward velocity
-        -spacemouse_msg.twist.angular.x,     # lateral velocity (flip for correct direction)
-        spacemouse_msg.twist.angular.z       # yaw rate
-    ]
-    # Height command (obs[9]) - default standing height
-    obs[9] = height
+    if isinstance(controller_msg, SpaceMouseState):
+        obs[6:9] = [
+            controller_msg.twist.angular.y,      # forward velocity
+            -controller_msg.twist.angular.x,     # lateral velocity (flip for correct direction)
+            controller_msg.twist.angular.z       # yaw rate
+        ]
+        obs[9] = height
+    else:
+        obs[6:9] = [
+            controller_msg.axes[1],      # forward velocity
+            controller_msg.axes[0],     # lateral velocity (flip for correct direction)
+            controller_msg.axes[2]      # yaw rate
+        ]
+        obs[9] = 0.3 + controller_msg.axes[3]/10
+    
     # Fill joint positions (obs[13:25]) in policy order
     obs[10:22] = current_joint_pos_policy - default_pos_policy
     # Fill joint velocities (obs[25:37]) in policy order
     obs[22:34] = current_joint_vel_policy
     # Previous actions (obs[37:49]) - default to zero
     obs[34:46] = prev_actions
-    obs[46] = np.sin(2.0 * np.pi * phase)
-    obs[47] = np.cos(2.0 * np.pi * phase)
+    # obs[46] = np.sin(2.0 * np.pi * phase)
+    # obs[47] = np.cos(2.0 * np.pi * phase)
         
     return obs
 

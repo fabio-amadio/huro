@@ -30,6 +30,7 @@ from huro.msg import SpaceMouseState
 from huro_py.crc_go import Crc
 from huro_py.get_obs import  get_obs_low_state
 from huro_py.utils import Mapper
+from sensor_msgs.msg import Joy
 
 np.set_printoptions(precision=3)
 
@@ -38,7 +39,7 @@ class Go2PolicyController(Node):
     """RL Policy controller for Unitree Go2 locomotion."""
 
     def __init__(
-        self, policy_name = "policy.pt", training_type = "normal", sim = True
+        self, policy_name = "policy.pt", training_type = "normal", sim = True, use_spacemouse = False
     ):
         """
         Initialize the policy controller.
@@ -61,9 +62,10 @@ class Go2PolicyController(Node):
         print(f"[INFO] use_sim_time: {use_sim_time}")
 
         self.step_dt = 1 / 50 # policy freq = 50Hz
-        self.control_gait = 1/200 # the phase updated at 2Hz
+        self.control_gait = 1/500 # the phase updated at 2Hz
         self.phase = 0.0
         self.run_policy = False
+        self.use_spacemouse = use_spacemouse
 
         # Emergency mode
         self.emergency_mode = False
@@ -111,7 +113,7 @@ class Go2PolicyController(Node):
 
         # Store latest messages
         self.latest_low_state = None
-        self.spacemouse_state = None
+        self.controller_state = None
 
         self.kp = 25.0  # Position gain
         self.kd = 0.5  # Velocity gain
@@ -144,10 +146,14 @@ class Go2PolicyController(Node):
         # Initialize communication
         self.low_cmd_pub = self.create_publisher(LowCmd, "/lowcmd", 10)
 
-        # To read data from spacemouse
-        self.spacemouse_sub = self.create_subscription(
-            SpaceMouseState, "/spacemouse_state", self.spacemouse_callback, 10
-        )
+        if use_spacemouse:
+            self.spacemouse_sub = self.create_subscription(
+                SpaceMouseState, "/spacemouse_state", self.spacemouse_callback, 10
+            )
+        else:
+            self.joy_sub = self.create_subscription(
+                Joy, "/joy", self.joy_callback, 10
+            )
 
         # Get low lovel data from robot
         self.low_state_sub = self.create_subscription(
@@ -175,7 +181,11 @@ class Go2PolicyController(Node):
 
     def spacemouse_callback(self, msg: SpaceMouseState):
         """Log spacemouse state"""
-        self.spacemouse_state = msg
+        self.controller_state = msg
+
+    def joy_callback(self, msg: SpaceMouseState):
+        """Log spacemouse state"""
+        self.controller_state = msg
 
     def emergency_mode_control(self):
         """Smoothly reduce gains and torque to zero over release_duration."""
@@ -281,7 +291,7 @@ class Go2PolicyController(Node):
         # Robot in standing position for the begining
 
         try:
-            if self.latest_low_state is not None and self.spacemouse_state is not None:
+            if self.latest_low_state is not None and self.controller_state is not None:
                 self.process_control_step()
             else:
                 print("Waiting for robot state...")
@@ -302,19 +312,23 @@ class Go2PolicyController(Node):
     def process_control_step(self):
         """Process one control step (called at control_freq Hz)."""
         self.tick_count += 1
-        self.curr_time = self.get_clock().now()       
+        self.curr_time = self.get_clock().now()
+
+        if self.use_spacemouse:
+            emergency_cond = self.controller_state.button_1_pressed and self.controller_state.button_2_pressed and self.run_policy or self.emergency_mode
+            policy_run_cond = self.controller_state.button_1_pressed
+        else:
+            emergency_cond = self.controller_state.buttons[8] and self.controller_state.buttons[9] and self.run_policy or self.emergency_mode
+            policy_run_cond = self.controller_state.buttons[8]
 
         if (
-            self.spacemouse_state.button_1_pressed
-            and self.spacemouse_state.button_2_pressed
-            and self.run_policy
-            or self.emergency_mode
+            emergency_cond
         ):
             if not self.emergency_mode:
                 self.emergency_mode_start_time = self.get_clock().now()
             self.emergency_mode = True
             self.emergency_mode_control()
-        elif self.spacemouse_state.button_1_pressed:
+        elif policy_run_cond:
             self.run_policy = True
         elif (
             self.curr_time - self.start_time
@@ -332,7 +346,7 @@ class Go2PolicyController(Node):
         
         obs = get_obs_low_state(
             self.latest_low_state,
-            self.spacemouse_state,
+            self.controller_state,
             height=0.40,
             prev_actions=self.current_action,
             phase = self.phase,
@@ -362,6 +376,10 @@ def main():
     
     parser.add_argument(
         "--sim", type=bool, default=True, help="Wether to use simulation or real robot"
+    )
+
+    parser.add_argument(
+        "--use_spacemouse", type=bool, default=False, help="Wether to use spacemouse (default: use joy)"
     )
 
     # Parse only known args to allow ROS args to pass through
