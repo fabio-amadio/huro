@@ -379,7 +379,7 @@ def main():
     )
 
     parser.add_argument(
-        "--use_spacemouse", type=bool, default=False, help="Wether to use spacemouse (default: use joy)"
+        "--use_spacemouse", type=bool, default=True, help="Wether to use spacemouse (default: use joy)"
     )
 
     # Parse only known args to allow ROS args to pass through
@@ -392,7 +392,8 @@ def main():
     node = Go2PolicyController(
         policy_name=args.policy,
         training_type = args.training_type,
-        sim = args.sim
+        sim = args.sim,
+        use_spacemouse=args.use_spacemouse
     )
 
     try:

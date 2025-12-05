@@ -237,6 +237,39 @@ protected:
       lowstate.motor_state[i].ddq = qddot;
     }
 
+    // Foot contact forces from MuJoCo contact data (only for Go2, not G1)
+    if constexpr (N_MOTORS == 12) {  // Go2 only
+      // Initialize to zero
+      for (size_t i = 0; i < 4; ++i) {
+        lowstate.foot_force[i] = 0;
+        lowstate.foot_force_est[i] = 0;
+      }
+      
+      // Get foot geom IDs for Go2 (these are the actual collision geometries)
+      std::vector<std::string> foot_geom_names = {"FL", "FR", "RL", "RR"};
+      
+      // Sum contact forces for each foot
+      for (int i = 0; i < mj_data_->ncon; ++i) {
+        const mjContact& con = mj_data_->contact[i];
+        
+        // Check which foot geometry is in contact
+        for (size_t foot_idx = 0; foot_idx < foot_geom_names.size(); ++foot_idx) {
+          int foot_geom_id = mj_name2id(mj_model_, mjOBJ_GEOM, foot_geom_names[foot_idx].c_str());
+          
+          if (con.geom1 == foot_geom_id || con.geom2 == foot_geom_id) {
+            // Get contact force in world frame
+            mjtNum contact_force[6];
+            mj_contactForce(mj_model_, mj_data_, i, contact_force);
+            
+            // Sum normal force magnitude (contact_force[0] is normal force in contact frame)
+            float normal_force = static_cast<float>(std::abs(contact_force[0]));
+            lowstate.foot_force[foot_idx] += static_cast<int16_t>(normal_force);
+            lowstate.foot_force_est[foot_idx] += static_cast<int16_t>(normal_force);
+          }
+        }
+      }
+    }
+
     return lowstate;
   }
 
