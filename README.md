@@ -105,3 +105,7 @@ ros2 run huro go2_publisher.py ros2 run huro go2_publisher.py --use_spacemouse T
 The robot will enter a stand up phase.
 Once this is done, press one of the side buttons to launch the policy.
 To stop it (emergency mode), you can press the two side buttons simultaneously.
+
+
+### With the real robot:
+add --sim False when runing go2_publisher.py
