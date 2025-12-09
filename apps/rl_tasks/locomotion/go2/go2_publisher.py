@@ -312,10 +312,10 @@ class Go2PolicyController(Node):
 
         if self.use_spacemouse:
             emergency_cond = self.controller_state.button_1_pressed and self.controller_state.button_2_pressed and self.run_policy or self.emergency_mode
-            policy_run_cond = self.controller_state.button_1_pressed
+            policy_run_cond = self.controller_state.button_1_pressed or self.controller_state.button_2_pressed 
         else:
             emergency_cond = self.controller_state.buttons[8] and self.controller_state.buttons[9] and self.run_policy or self.emergency_mode
-            policy_run_cond = self.controller_state.buttons[8]
+            policy_run_cond = self.controller_state.buttons[8] or self.controller_state.buttons[8]
 
         if (
             emergency_cond or self.emergency_mode
@@ -333,7 +333,7 @@ class Go2PolicyController(Node):
         ).nanoseconds * 1e-9 <= self.time_to_stand:
             self.stand_control()
         # Run policy
-        elif (self.curr_time - self.start_time).nanoseconds * 1e-9 >= self.time_to_stand: # and self.run_policy 
+        elif (self.curr_time - self.start_time).nanoseconds * 1e-9 >= self.time_to_stand and self.run_policy:
             self.policy_control()
             
     def policy_control(self):
