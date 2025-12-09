@@ -35,6 +35,7 @@ class SpaceMousePublisher(Node):
             msg.button_2_pressed = bool(state.buttons[1])
             self.tf_publisher.publish(msg)
         else:
+            # TODO : Initialise this in init. Evaluate usefulness.
             msg = SpaceMouseState()
             msg.twist.linear.x = float(0.0)
             msg.twist.linear.y = float(0.0)
@@ -45,7 +46,6 @@ class SpaceMousePublisher(Node):
             msg.button_1_pressed = bool(False)
             msg.button_2_pressed = bool(False)
             self.tf_publisher.publish(msg)
-            
 
 
 def main(args=None):
