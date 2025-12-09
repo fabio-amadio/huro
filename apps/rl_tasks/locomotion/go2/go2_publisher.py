@@ -11,7 +11,7 @@ TO RUN:
 ros2 launch huro go2_rviz.launch.py
 ros2 run huro spacemouse_publisher.py
 ros2 run huro sim_go2
-ros2 run huro go2_publisher.py --training_task asymmetric
+ros2 run huro go2_publisher.py --use_spacemouse True
 
 """
 import rclpy
@@ -367,7 +367,7 @@ def main():
     )
     
     parser.add_argument(
-        "--training_type", type=str, default="normal", help="The type of training use (normal, asymmetric or student)"
+        "--training_type", type=str, default="asymmetric", help="The type of training use (normal, asymmetric or student)"
     )
     
     parser.add_argument(
@@ -375,7 +375,7 @@ def main():
     )
 
     parser.add_argument(
-        "--use_spacemouse", type=bool, default=True, help="Wether to use spacemouse (default: use joy)"
+        "--use_spacemouse", type=bool, default=False, help="Wether to use spacemouse (default: use joy)"
     )
 
     # Parse only known args to allow ROS args to pass through

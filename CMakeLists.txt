@@ -100,7 +100,7 @@ install(
   DESTINATION lib/${PROJECT_NAME}
 )
 
-add_executable(g1_low_level apps/g1_low_level.cc ${SRCS})
+add_executable(g1_low_level apps/examples/g1_low_level.cc ${SRCS})
 target_include_directories(g1_low_level PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include/${PROJECT_NAME}>)
@@ -117,11 +117,11 @@ install(
 ament_python_install_package(${PROJECT_NAME}_py)
 # Install Python executables
 install(
-  PROGRAMS apps/move_example.py
+  PROGRAMS apps/examples/g1_example.py
   DESTINATION lib/${PROJECT_NAME}
 )
 install(
-  PROGRAMS apps/go2_example.py
+  PROGRAMS apps/examples/go2_example.py
   DESTINATION lib/${PROJECT_NAME}
 )
 install(
