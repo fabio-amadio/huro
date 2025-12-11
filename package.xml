@@ -10,6 +10,7 @@
   <buildtool_depend>ament_cmake</buildtool_depend>
   <buildtool_depend>ament_cmake_python</buildtool_depend>
 
+  <depend>joy</depend>
   <depend>rclcpp</depend>
   <depend>rclpy</depend>
   <depend>unitree_hg</depend>

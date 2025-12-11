@@ -14,6 +14,7 @@
 #include <ament_index_cpp/get_package_share_directory.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <rosgraph_msgs/msg/clock.hpp>
+#include <sensor_msgs/msg/joy.hpp>
 #include <unitree_go/msg/low_cmd.hpp>
 #include <unitree_go/msg/low_state.hpp>
 #include <unitree_go/msg/motor_cmd.hpp>
@@ -66,15 +67,20 @@ public:
 
     lowstate_pub_ = this->create_publisher<LowStateMsg>(ls_topic, 10);
     odom_pub_ = this->create_publisher<OdometryMsg>(odom_topic, 10);
-    clock_pub_ = this->create_publisher<rosgraph_msgs::msg::Clock>("/clock", 10);
+    clock_pub_ =
+        this->create_publisher<rosgraph_msgs::msg::Clock>("/clock", 10);
 
     lowmcd_sub_ = this->create_subscription<LowCmdMsg>(
         params_.lowcmd_topic_name, 10,
         std::bind(&SimNode::LowCmdHandler, this, std::placeholders::_1));
 
+    joy_sub_ = this->create_subscription<sensor_msgs::msg::Joy>(
+        "/joy", 10,
+        std::bind(&SimNode::JoyHandler, this, std::placeholders::_1));
+
     // Declare fix_base as a ROS2 parameter
     this->declare_parameter("fix_base", params_.fix_base);
-    
+
     // Set up parameter callback to allow runtime changes
     param_callback_handle_ = this->add_on_set_parameters_callback(
         std::bind(&SimNode::ParametersCallback, this, std::placeholders::_1));
@@ -92,41 +98,43 @@ public:
 
 protected:
   void Step() {
-    time_s_ += params_.sim_dt_ms / 1000.0;
+    if (start_sim_) {
+      time_s_ += params_.sim_dt_ms / 1000.0;
 
-    if (params_.fix_base) {
-      FixModelBase();
+      if (params_.fix_base) {
+        FixModelBase();
+      }
+
+      // Calculate control
+      for (size_t i = 0; i < N_MOTORS; ++i) {
+        mjtNum q_e = q_des_[i] - mj_data_->qpos[7 + i];
+        mjtNum qdot_e = qdot_des_[i] - mj_data_->qvel[6 + i];
+
+        mj_data_->ctrl[i] = kp_[i] * q_e + kd_[i] * qdot_e + tau_ff_[i];
+        // mj_data_->ctrl[i] = 0.0;
+      }
+
+      // Step the simulation
+      mj_step(mj_model_, mj_data_);
+
+      // Publish the new state
+      // OdomMsg: world frame base position and linear velocity
+      // LowStateMsg: bodyframe base orientation and angular velocity and
+      // joint state
+      OdometryMsg odom_msg = GenerateOdometryMsg();
+      LowStateMsg lowstate_msg = GenerateLowStateMsg();
+
+      odom_pub_->publish(odom_msg);
+      lowstate_pub_->publish(lowstate_msg);
+
+      // Publish clock for use_sim_time synchronization
+      rosgraph_msgs::msg::Clock clock_msg;
+      int32_t sec = static_cast<int32_t>(time_s_);
+      double frac = time_s_ - static_cast<double>(sec);
+      clock_msg.clock.sec = sec;
+      clock_msg.clock.nanosec = static_cast<uint32_t>(frac * 1e9);
+      clock_pub_->publish(clock_msg);
     }
-
-    // Calculate control
-    for (size_t i = 0; i < N_MOTORS; ++i) {
-      mjtNum q_e = q_des_[i] - mj_data_->qpos[7 + i];
-      mjtNum qdot_e = qdot_des_[i] - mj_data_->qvel[6 + i];
-
-      mj_data_->ctrl[i] = kp_[i] * q_e + kd_[i] * qdot_e + tau_ff_[i];
-      // mj_data_->ctrl[i] = 0.0;
-    }
-
-    // Step the simulation
-    mj_step(mj_model_, mj_data_);
-
-    // Publish the new state
-    // OdomMsg: world frame base position and linear velocity
-    // LowStateMsg: bodyframe base orientation and angular velocity and
-    // joint state
-    OdometryMsg odom_msg = GenerateOdometryMsg();
-    LowStateMsg lowstate_msg = GenerateLowStateMsg();
-
-    odom_pub_->publish(odom_msg);
-    lowstate_pub_->publish(lowstate_msg);
-    
-    // Publish clock for use_sim_time synchronization
-    rosgraph_msgs::msg::Clock clock_msg;
-    int32_t sec = static_cast<int32_t>(time_s_);
-    double frac = time_s_ - static_cast<double>(sec);
-    clock_msg.clock.sec = sec;
-    clock_msg.clock.nanosec = static_cast<uint32_t>(frac * 1e9);
-    clock_pub_->publish(clock_msg);
   }
 
   void LowCmdHandler(std::shared_ptr<LowCmdMsg> message) {
@@ -142,19 +150,25 @@ protected:
     }
   }
 
+  void JoyHandler(std::shared_ptr<sensor_msgs::msg::Joy> message) {
+    if (message->buttons[1] == 1) {
+      start_sim_ = 1;
+    }
+  }
+
   rcl_interfaces::msg::SetParametersResult
   ParametersCallback(const std::vector<rclcpp::Parameter> &parameters) {
     rcl_interfaces::msg::SetParametersResult result;
     result.successful = true;
-    
+
     for (const auto &param : parameters) {
       if (param.get_name() == "fix_base") {
         params_.fix_base = param.as_bool();
-        RCLCPP_INFO(this->get_logger(), "fix_base changed to: %s", 
+        RCLCPP_INFO(this->get_logger(), "fix_base changed to: %s",
                     params_.fix_base ? "true" : "false");
       }
     }
-    
+
     return result;
   }
 
@@ -238,32 +252,36 @@ protected:
     }
 
     // Foot contact forces from MuJoCo contact data for go2
-    if constexpr (N_MOTORS == 12) {  
+    if constexpr (N_MOTORS == 12) {
       for (size_t i = 0; i < 4; ++i) {
         lowstate.foot_force[i] = 0;
         lowstate.foot_force_est[i] = 0;
       }
-      
+
       // Get foot geom IDs for Go2 (collisions geometries)
       std::vector<std::string> foot_geom_names = {"FL", "FR", "RL", "RR"};
-      
+
       // Sum contact forces for each foot
       for (int i = 0; i < mj_data_->ncon; ++i) {
-        const mjContact& con = mj_data_->contact[i];
-        
+        const mjContact &con = mj_data_->contact[i];
+
         // Check contact
-        for (size_t foot_idx = 0; foot_idx < foot_geom_names.size(); ++foot_idx) {
-          int foot_geom_id = mj_name2id(mj_model_, mjOBJ_GEOM, foot_geom_names[foot_idx].c_str());
-          
+        for (size_t foot_idx = 0; foot_idx < foot_geom_names.size();
+             ++foot_idx) {
+          int foot_geom_id = mj_name2id(mj_model_, mjOBJ_GEOM,
+                                        foot_geom_names[foot_idx].c_str());
+
           if (con.geom1 == foot_geom_id || con.geom2 == foot_geom_id) {
             // Get contact force in world frame
             mjtNum contact_force[6];
             mj_contactForce(mj_model_, mj_data_, i, contact_force);
-            
-            // Sum normal force magnitude (contact_force[0] is normal force in contact frame)
+
+            // Sum normal force magnitude (contact_force[0] is normal force in
+            // contact frame)
             float normal_force = static_cast<float>(std::abs(contact_force[0]));
             lowstate.foot_force[foot_idx] += static_cast<int16_t>(normal_force);
-            lowstate.foot_force_est[foot_idx] += static_cast<int16_t>(normal_force);
+            lowstate.foot_force_est[foot_idx] +=
+                static_cast<int16_t>(normal_force);
           }
         }
       }
@@ -297,13 +315,16 @@ protected:
 
   double time_s_; // Running time count (in seconds)
   int mode_machine;
+  int start_sim_ = 0;
 
   std::shared_ptr<rclcpp::Publisher<LowStateMsg>> lowstate_pub_;
   std::shared_ptr<rclcpp::Publisher<OdometryMsg>> odom_pub_;
   std::shared_ptr<rclcpp::Publisher<rosgraph_msgs::msg::Clock>> clock_pub_;
   std::shared_ptr<rclcpp::Subscription<LowCmdMsg>> lowmcd_sub_;
+  std::shared_ptr<rclcpp::Subscription<sensor_msgs::msg::Joy>> joy_sub_;
   std::shared_ptr<rclcpp::TimerBase> timer_;
-  rclcpp::node_interfaces::OnSetParametersCallbackHandle::SharedPtr param_callback_handle_;
+  rclcpp::node_interfaces::OnSetParametersCallbackHandle::SharedPtr
+      param_callback_handle_;
 
   mjModel *mj_model_;
   mjData *mj_data_;

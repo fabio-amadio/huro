@@ -65,10 +65,10 @@ class Go2PolicyController(Node):
         self.emergency_mode = False
         self.emergency_mode_start_time = None
         self.last_commanded_positions = None
-        
+
         # Track if we've unfixed the base
         self.base_unfixed = False
-        
+
         # Store latest action (for use between policy updates)
         self.current_action = np.zeros(12)
 
@@ -76,31 +76,31 @@ class Go2PolicyController(Node):
         self.latest_low_state = None
         self.spacemouse_state = None
         self.action_scale = 0.5  # Scale policy output
-        
-        if sim:        
+
+        if sim:
             self.leg_kps= [100., 100., 100., 150., 40., 40., 100., 100., 100., 150., 40., 40.]
             self.leg_kds= [2., 2., 2., 4., 2., 2., 2., 2., 2., 4., 2., 2.]
-            self.upper_kps = [60., 40., 40.,                  
-                        40., 40., 40., 40.,  40., 40., 40., 
+            self.upper_kps = [60., 40., 40.,
+                        40., 40., 40., 40.,  40., 40., 40.,
                         40., 40., 40., 40.,  40., 40., 40. ]
-            self.upper_kds = [1., 1., 1.,             
-                    1., 1., 1., 1., 1., 1., 1., 
+            self.upper_kds = [1., 1., 1.,
+                    1., 1., 1., 1., 1., 1., 1.,
                     1., 1., 1., 1., 1., 1., 1.  ]
-        
+
         else:
             self.leg_kds = [2., 2., 2., 4., 2., 2., 2., 2., 2., 4., 2., 2.]
-            self.upper_kds = [3., 3., 3., 
+            self.upper_kds = [3., 3., 3.,
                     2., 2., 2., 2., 1., 1., 1.,
                     2., 2., 2., 2., 1., 1., 1.]
-            
+
             self.leg_kps = [100., 100., 100., 150., 40., 40., 100., 100., 100., 150., 40., 40.]
             self.upper_kps = [300., 300., 300.,
                     100., 100., 50., 50., 20., 20., 20.,
                     100., 100., 50., 50., 20., 20., 20.]
-            
-        
+
+
         # Standing position (default joint positions but coud be different)
-        self.default_joint_legs = [-0.1,  0.0,  0.0,  0.3, -0.2, 0.0, 
+        self.default_joint_legs = [-0.1,  0.0,  0.0,  0.3, -0.2, 0.0,
                   -0.1,  0.0,  0.0,  0.3, -0.2, 0.0]
         self.target_pos_upper = [ 0.0, 0., 0.,
                     0., 0., 0., 0., 0., 0., 0.,
@@ -113,7 +113,7 @@ class Go2PolicyController(Node):
 
         # Load policy model
         share = get_package_share_directory("huro")
-        
+
         if policy_name is None:
             if not self.high_state:
                 if training_type == "asymmetric":
@@ -124,7 +124,7 @@ class Go2PolicyController(Node):
                     policy_name = "motion.pt"
             else:
                 policy_name = "policy_teacher.pt"
-                
+
         policy_path = os.path.join(share, "resources", "models", "g1", policy_name)
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -137,8 +137,8 @@ class Go2PolicyController(Node):
         self.policy.eval()
         print("[INFO] Policy loaded successfully")
 
-    
-        
+
+
         self.time_to_stand = 2.0  # Time to reach the standing position
 
         # Statistics - initialize BEFORE callbacks
@@ -191,18 +191,18 @@ class Go2PolicyController(Node):
         if not self.sim_param_client.service_is_ready():
             self.get_logger().warn('sim_node parameter service not available')
             return
-        
+
         # Create parameter to set fix_base = False
         param = Parameter()
         param.name = 'fix_base'
         param.value = ParameterValue(type=ParameterType.PARAMETER_BOOL, bool_value=False)
-        
+
         request = SetParameters.Request()
         request.parameters = [param]
-        
+
         future = self.sim_param_client.call_async(request)
         future.add_done_callback(self._unfix_base_callback)
-    
+
     def _unfix_base_callback(self, future):
         """Callback for base unfixing service response."""
         try:
@@ -253,8 +253,8 @@ class Go2PolicyController(Node):
         self.low_cmd_pub.publish(cmd)
 
     def stand_control(self):
-        print("Moving to default pos.")   
-        cmd = LowCmd()   
+        print("Moving to default pos.")
+        cmd = LowCmd()
         cmd.mode_machine = 1
         cmd.mode_pr = 0
         kps = self.leg_kps + self.upper_kps
@@ -272,7 +272,7 @@ class Go2PolicyController(Node):
         init_dof_pos = np.zeros(G1_NUM_MOTOTS, dtype=np.float32)
         for i in range(G1_NUM_MOTOTS):
             init_dof_pos[i] = self.latest_low_state.motor_state[i].q
-        
+
 
         for j in range(G1_NUM_MOTOTS):
             target_pos = default_pos[j]
@@ -291,7 +291,7 @@ class Go2PolicyController(Node):
         cmd = LowCmd()
         cmd.mode_machine = 1
         cmd.mode_pr = 0
-        
+
         # Store last commanded positions for potential emergency mode
         self.last_commanded_positions = (
             self.default_joint_legs
@@ -299,7 +299,7 @@ class Go2PolicyController(Node):
 
         # Build low cmd
         for i in range(NUM_ACTIONS):
-            
+
             cmd.motor_cmd[i].q = self.last_commanded_positions[i]
             cmd.motor_cmd[i].dq = 0.
             cmd.motor_cmd[i].kp = self.leg_kps[i]
@@ -349,7 +349,7 @@ class Go2PolicyController(Node):
     def process_control_step(self):
         """Process one control step (called at control_freq Hz)."""
         self.tick_count += 1
-        self.curr_time = self.get_clock().now()       
+        self.curr_time = self.get_clock().now()
 
         if (
             self.spacemouse_state.button_1_pressed
@@ -377,7 +377,7 @@ class Go2PolicyController(Node):
                 self.unfix_sim_base()
                 self.base_unfixed = True
             self.policy_control()
-            
+
     def policy_control(self):
         # Get observation
         phase = (self.phase + self.step_dt * self.control_gait) % 1
@@ -421,11 +421,11 @@ def main():
     parser.add_argument(
         "--high_state", type=bool, default=False, help="Wether to use base_vel sent by sportsmode state or not"
     )
-    
+
     parser.add_argument(
         "--training_type", type=str, default="normal", help="The type of training use (normal, asymmetric or student)"
     )
-    
+
     parser.add_argument(
         "--sim", type=bool, default=True, help="Wether to use simulation or real robot (changes kps and kds)"
     )
