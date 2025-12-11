@@ -110,7 +110,8 @@ protected:
         mjtNum q_e = q_des_[i] - mj_data_->qpos[7 + i];
         mjtNum qdot_e = qdot_des_[i] - mj_data_->qvel[6 + i];
 
-        mj_data_->ctrl[i] = kp_[i] * q_e + kd_[i] * qdot_e + tau_ff_[i];
+        mj_data_->ctrl[i] =
+            motor_mode_[i] * (kp_[i] * q_e + kd_[i] * qdot_e + tau_ff_[i]);
         // mj_data_->ctrl[i] = 0.0;
       }
 
@@ -142,6 +143,7 @@ protected:
     // mode_machine = (int)message->mode_machine;
 
     for (size_t i = 0; i < N_MOTORS; ++i) {
+      motor_mode_[i] = static_cast<int>(message->motor_cmd[i].mode);
       q_des_[i] = static_cast<mjtNum>(message->motor_cmd[i].q);
       qdot_des_[i] = static_cast<mjtNum>(message->motor_cmd[i].dq);
       tau_ff_[i] = static_cast<mjtNum>(message->motor_cmd[i].tau);
@@ -329,6 +331,7 @@ protected:
   mjModel *mj_model_;
   mjData *mj_data_;
 
+  std::array<int, N_MOTORS> motor_mode_;
   std::array<double, N_MOTORS> q_des_;
   std::array<double, N_MOTORS> qdot_des_;
   std::array<double, N_MOTORS> tau_ff_;
