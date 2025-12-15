@@ -28,7 +28,7 @@ from huro.msg import SpaceMouseState
 
 
 from huro_py.crc_go import Crc
-from huro_py.get_obs import  get_obs_low_state
+from huro_py.get_obs import get_obs_low_state
 from huro_py.utils import Mapper
 from sensor_msgs.msg import Joy
 
@@ -39,7 +39,11 @@ class Go2PolicyController(Node):
     """RL Policy controller for Unitree Go2 locomotion."""
 
     def __init__(
-        self, policy_name = "policy.pt", training_type = "normal", sim = True, use_spacemouse = False
+        self,
+        policy_name="policy.pt",
+        training_type="normal",
+        sim=True,
+        use_spacemouse=False,
     ):
         """
         Initialize the policy controller.
@@ -54,15 +58,14 @@ class Go2PolicyController(Node):
         """
         params = []
         if sim == True:
-            params.append(rclpy.parameter.Parameter('use_sim_time', value=True))
-        super().__init__("go2_policy_controller",
-                        parameter_overrides=params)
+            params.append(rclpy.parameter.Parameter("use_sim_time", value=True))
+        super().__init__("go2_policy_controller", parameter_overrides=params)
         # Verify we're using sim time if the sim param is set to True
-        use_sim_time = self.get_parameter('use_sim_time').value
+        use_sim_time = self.get_parameter("use_sim_time").value
         print(f"[INFO] use_sim_time: {use_sim_time}")
 
-        self.step_dt = 1 / 50 # policy freq = 50Hz
-        self.control_gait = 1/500 # the phase updated at 2Hz
+        self.step_dt = 1 / 50  # policy freq = 50Hz
+        self.control_gait = 1 / 500  # the phase updated at 2Hz
         self.phase = 0.0
         self.run_policy = False
         self.use_spacemouse = use_spacemouse
@@ -74,7 +77,7 @@ class Go2PolicyController(Node):
 
         # Load policy model
         share = get_package_share_directory("huro")
-        
+
         if policy_name is None:
             if training_type == "asymmetric":
                 policy_name = "policy_asymmetric6.pt"
@@ -82,7 +85,7 @@ class Go2PolicyController(Node):
                 policy_name = "policy_student.pt"
             else:
                 policy_name = "policy_low_state.pt"
-            
+
         policy_path = os.path.join(share, "resources", "models", "go2", policy_name)
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -99,14 +102,26 @@ class Go2PolicyController(Node):
         mapping_path = policy_path = os.path.join(
             share, "resources", "mappings", "go2", "physx_to_mujoco_go2.yaml"
         )
-        
-        self.default_pos_sdk = np.array([
-            0.0, 0.8, -1.5,  # FR: hip, thigh, calf (actuators 0-2)
-            0.0, 0.8, -1.5,  # FL: hip, thigh, calf (actuators 3-5)
-            0.0, 0.8, -1.5,  # RR: hip, thigh, calf (actuators 6-8)
-            0.0, 0.8, -1.5   # RL: hip, thigh, calf (actuators 9-11)
-        ])
-        self.mapper = Mapper(mapping_yaml_path=mapping_path, default_pos_sdk= self.default_pos_sdk)
+
+        self.default_pos_sdk = np.array(
+            [
+                0.0,
+                0.8,
+                -1.5,  # FR: hip, thigh, calf (actuators 0-2)
+                0.0,
+                0.8,
+                -1.5,  # FL: hip, thigh, calf (actuators 3-5)
+                0.0,
+                0.8,
+                -1.5,  # RR: hip, thigh, calf (actuators 6-8)
+                0.0,
+                0.8,
+                -1.5,  # RL: hip, thigh, calf (actuators 9-11)
+            ]
+        )
+        self.mapper = Mapper(
+            mapping_yaml_path=mapping_path, default_pos_sdk=self.default_pos_sdk
+        )
 
         # Store latest action (for use between policy updates)
         self.current_action = np.zeros(12)
@@ -150,15 +165,13 @@ class Go2PolicyController(Node):
                 SpaceMouseState, "/spacemouse_state", self.spacemouse_callback, 10
             )
         else:
-            self.joy_sub = self.create_subscription(
-                Joy, "/joy", self.joy_callback, 10
-            )
+            self.joy_sub = self.create_subscription(Joy, "/joy", self.joy_callback, 10)
 
         # Get low lovel data from robot
         self.low_state_sub = self.create_subscription(
             LowState, "/lowstate", self.low_state_callback, 10
         )
-        
+
         self.motion_pub = self.create_publisher(
             Request, "/api/motion_switcher/request", 10
         )
@@ -255,11 +268,11 @@ class Go2PolicyController(Node):
         """Send motor commands to the robot based on current action."""
         # Convert current action from policy order to SDK order
         actions_sdk_order = self.mapper.actions_policy_to_sdk(self.current_action)
-        
+
         # Store last commanded positions for potential emergency mode
         self.last_commanded_positions = (
             self.mapper.default_pos_sdk
-        )   + actions_sdk_order * self.action_scale
+        ) + actions_sdk_order * self.action_scale
 
         cmd = LowCmd()
         cmd.head[0] = 0xFE
@@ -282,10 +295,10 @@ class Go2PolicyController(Node):
 
     def run(self):
         """Main control loop running at control_freq Hz."""
-        
+
         try:
             if self.latest_low_state is not None and self.controller_state is not None:
-                if self.tick_count ==0:
+                if self.tick_count == 0:
                     self.start_time = self.get_clock().now()
                 self.process_control_step()
             else:
@@ -308,44 +321,56 @@ class Go2PolicyController(Node):
         """Process one control step (called at control_freq Hz)."""
         self.tick_count += 1
         self.curr_time = self.get_clock().now()
-    
 
         if self.use_spacemouse:
-            emergency_cond = self.controller_state.button_1_pressed and self.controller_state.button_2_pressed and self.run_policy or self.emergency_mode
-            policy_run_cond = self.controller_state.button_1_pressed or self.controller_state.button_2_pressed 
+            emergency_cond = (
+                self.controller_state.button_1_pressed
+                and self.controller_state.button_2_pressed
+                and self.run_policy
+                or self.emergency_mode
+            )
+            policy_run_cond = (
+                self.controller_state.button_1_pressed
+                or self.controller_state.button_2_pressed
+            )
         else:
-            emergency_cond = self.controller_state.buttons[8] and self.controller_state.buttons[9] and self.run_policy or self.emergency_mode
-            policy_run_cond = self.controller_state.buttons[8] or self.controller_state.buttons[8]
+            emergency_cond = (
+                self.controller_state.buttons[8]
+                and self.controller_state.buttons[9]
+                and self.run_policy
+                or self.emergency_mode
+            )
+            policy_run_cond = (
+                self.controller_state.buttons[8] or self.controller_state.buttons[8]
+            )
 
-        if (
-            emergency_cond or self.emergency_mode
-        ):
+        if emergency_cond or self.emergency_mode:
             if not self.emergency_mode:
                 self.emergency_mode_start_time = self.get_clock().now()
             self.emergency_mode = True
             self.emergency_mode_control()
-        
+
         if policy_run_cond:
             self.run_policy = True
-        
-        if (
-            self.curr_time - self.start_time
-        ).nanoseconds * 1e-9 <= self.time_to_stand:
+
+        if (self.curr_time - self.start_time).nanoseconds * 1e-9 <= self.time_to_stand:
             self.stand_control()
         # Run policy
-        elif (self.curr_time - self.start_time).nanoseconds * 1e-9 >= self.time_to_stand and self.run_policy:
+        elif (
+            self.curr_time - self.start_time
+        ).nanoseconds * 1e-9 >= self.time_to_stand and self.run_policy:
             self.policy_control()
-            
+
     def policy_control(self):
-        
+
         self.phase = (self.phase + self.step_dt * self.control_gait) % 1
-        
+
         obs = get_obs_low_state(
             self.latest_low_state,
             self.controller_state,
             height=0.40,
             prev_actions=self.current_action,
-            phase = self.phase,
+            phase=self.phase,
             mapper=self.mapper,
         )
         with torch.no_grad():
@@ -365,17 +390,23 @@ def main():
     parser.add_argument(
         "--policy", type=str, default=None, help="Path to policy.pt file"
     )
-    
+
     parser.add_argument(
-        "--training_type", type=str, default="asymmetric", help="The type of training use (normal, asymmetric or student)"
+        "--training_type",
+        type=str,
+        default="asymmetric",
+        help="The type of training use (normal, asymmetric or student)",
     )
-    
+
     parser.add_argument(
         "--sim", type=bool, default=True, help="Wether to use simulation or real robot"
     )
 
     parser.add_argument(
-        "--use_spacemouse", type=bool, default=False, help="Wether to use spacemouse (default: use joy)"
+        "--use_spacemouse",
+        type=bool,
+        default=False,
+        help="Wether to use spacemouse (default: use joy)",
     )
 
     # Parse only known args to allow ROS args to pass through
@@ -387,9 +418,9 @@ def main():
     # Create controller
     node = Go2PolicyController(
         policy_name=args.policy,
-        training_type = args.training_type,
-        sim = args.sim,
-        use_spacemouse=args.use_spacemouse
+        training_type=args.training_type,
+        sim=args.sim,
+        use_spacemouse=args.use_spacemouse,
     )
 
     try:
