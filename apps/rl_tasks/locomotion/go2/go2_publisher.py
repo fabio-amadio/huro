@@ -57,12 +57,7 @@ class Go2PolicyController(Node):
             action_scale: Scale factor for policy actions (default: 0.25)
         """
         params = []
-        if sim == True:
-            params.append(rclpy.parameter.Parameter("use_sim_time", value=True))
         super().__init__("go2_policy_controller", parameter_overrides=params)
-        # Verify we're using sim time if the sim param is set to True
-        use_sim_time = self.get_parameter("use_sim_time").value
-        print(f"[INFO] use_sim_time: {use_sim_time}")
 
         self.step_dt = 1 / 50  # policy freq = 50Hz
         self.control_gait = 1 / 500  # the phase updated at 2Hz
@@ -71,6 +66,8 @@ class Go2PolicyController(Node):
         self.use_spacemouse = use_spacemouse
 
         # Emergency mode
+        self.motors_on = 1
+        self.violation = False
         self.emergency_mode = False
         self.emergency_mode_start_time = None
         self.last_commanded_positions = None
@@ -119,6 +116,40 @@ class Go2PolicyController(Node):
                 -1.5,  # RL: hip, thigh, calf (actuators 9-11)
             ]
         )
+        self.joint_ranger_lower = np.array(
+            [
+                -1.0472,
+                -1.5708,
+                -2.7227,  # FR: hip, thigh, calf (actuators 0-2)
+                -1.0472,
+                -1.5708,
+                -2.7227,  # FL: hip, thigh, calf (actuators 3-5)
+                -1.0472,
+                -0.5236,
+                -2.7227,  # RR: hip, thigh, calf (actuators 6-8)
+                -1.0472,
+                -0.5236,
+                -2.7227,  # RL: hip, thigh, calf (actuators 9-11)
+            ]
+        )
+        self.joint_ranger_upper = np.array(
+            [
+                1.0472,
+                3.4907,
+                -0.83776,  # FR: hip, thigh, calf (actuators 0-2)
+                1.0472,
+                3.4907,
+                -0.83776,  # FL: hip, thigh, calf (actuators 3-5)
+                1.0472,
+                4.5379,
+                -0.83776,  # RR: hip, thigh, calf (actuators 6-8)
+                1.0472,
+                4.5379,
+                -0.83776,  # RL: hip, thigh, calf (actuators 9-11)
+            ]
+        )
+        self.tau_lim = 23.7
+
         self.mapper = Mapper(
             mapping_yaml_path=mapping_path, default_pos_sdk=self.default_pos_sdk
         )
@@ -153,6 +184,7 @@ class Go2PolicyController(Node):
             dtype=float,
         )
         self.time_to_stand = 4.0  # Time to reach the standing position
+        self.total_time = 0.0
 
         # Statistics - initialize BEFORE callbacks
         self.tick_count = 0
@@ -190,51 +222,29 @@ class Go2PolicyController(Node):
     def low_state_callback(self, msg: LowState):
         """Log low state message."""
         self.latest_low_state = msg
+        # Safety check for joint limit violations
+        for i in range(12):
+            q = msg.motor_state[i].q
+            tau = msg.motor_state[i].tau_est
+            if q < self.joint_ranger_lower[i] or q > self.joint_ranger_upper[i]:
+                if self.run_policy:
+                    self.violation = True
+            if tau < -self.tau_lim or tau > self.tau_lim:
+                if self.run_policy:
+                    self.violation = True
 
     def spacemouse_callback(self, msg: SpaceMouseState):
         """Log spacemouse state"""
         self.controller_state = msg
 
-    def joy_callback(self, msg: SpaceMouseState):
+    def joy_callback(self, msg: Joy):
         """Log spacemouse state"""
         self.controller_state = msg
 
     def emergency_mode_control(self):
-        """Smoothly reduce gains and torque to zero over release_duration."""
-        if self.latest_low_state is None:
-            return
-
-        # Calculate progress (0 to 1)
-        release_duration = 2
-        elapsed = (
-            self.get_clock().now() - self.emergency_mode_start_time
-        ).nanoseconds * 1e-9
-        r = min(elapsed / release_duration, 1.0)
-
-        alpha = 1.0 - (1.0 - r) ** 10
-
-        # Gradually reduce gains from current values to zero
-        current_kp = self.kp * (1.0 - alpha)
-        current_kd = self.kd * (1.0 - alpha)
-
-        cmd = LowCmd()
-
-        for i in range(12):
-            q = self.latest_low_state.motor_state[i].q
-            dq = self.latest_low_state.motor_state[i].dq
-
-            # Compute diminishing torque
-            tau = current_kp * (self.last_commanded_positions[i] - q) - current_kd * dq
-
-            cmd.motor_cmd[i].mode = 0x01
-            cmd.motor_cmd[i].q = self.last_commanded_positions[i]
-            cmd.motor_cmd[i].dq = 0.0
-            cmd.motor_cmd[i].kp = current_kp
-            cmd.motor_cmd[i].kd = current_kd
-            cmd.motor_cmd[i].tau = tau
-
-        cmd.crc = Crc(cmd)
-        self.low_cmd_pub.publish(cmd)
+        """Shut down motors"""
+        self.motors_on = 0
+        print(self.motors_on)
 
     def stand_control(self):
         """PD control to standing position."""
@@ -242,9 +252,7 @@ class Go2PolicyController(Node):
             return
         cmd = LowCmd()
         r = min(
-            (self.get_clock().now() - self.start_time).nanoseconds
-            * 1e-9
-            / self.time_to_stand,
+            self.total_time / self.time_to_stand,
             1,
         )
         alpha = 1.0 - (1.0 - r) ** 3
@@ -253,7 +261,7 @@ class Go2PolicyController(Node):
             curr_kd = alpha * self.kd
             curr_kp = alpha * self.kp
             # tau = curr_kp * (self.stand_pos[i] - q) - curr_kd * dq
-            cmd.motor_cmd[i].mode = 1
+            cmd.motor_cmd[i].mode = self.motors_on
             cmd.motor_cmd[i].q = self.stand_pos[i]
             cmd.motor_cmd[i].dq = 0.0
             cmd.motor_cmd[i].kp = curr_kp
@@ -282,7 +290,7 @@ class Go2PolicyController(Node):
         # target_positions = self.mapper.default_pos_sdk + actions_sdk_order * self.action_scale
         # Set motor commands
         for i in range(12):
-            cmd.motor_cmd[i].mode = 0x01  # PMSM mode
+            cmd.motor_cmd[i].mode = self.motors_on  # PMSM mode
             cmd.motor_cmd[i].q = self.last_commanded_positions[i]
             cmd.motor_cmd[i].kp = self.kp
             cmd.motor_cmd[i].dq = 0.0
@@ -294,28 +302,28 @@ class Go2PolicyController(Node):
         self.low_cmd_pub.publish(cmd)
 
     def run(self):
+        self.total_time += self.step_dt
         """Main control loop running at control_freq Hz."""
+        self.process_control_step()
+        # try:
+        #     if self.latest_low_state is not None and self.controller_state is not None:
+        #         if self.tick_count == 0:
+        #             self.start_time = self.get_clock().now()
+        #
+        #     else:
+        #         print("Waiting for robot state...")
+        #         self.start_time = self.get_clock().now()
 
-        try:
-            if self.latest_low_state is not None and self.controller_state is not None:
-                if self.tick_count == 0:
-                    self.start_time = self.get_clock().now()
-                self.process_control_step()
-            else:
-                print("Waiting for robot state...")
-                self.start_time = self.get_clock().now()
-
-        except KeyboardInterrupt:
-            print("\n\n" + "=" * 60)
-            print("Shutting down...")
-            print(f"Total inferences: {self.tick_count}")
-            print(f"Total ticks: {self.tick_count}")
-            elapsed = time.time() - self.start_time
-            print(f"Real time elapsed: {elapsed:.2f}s")
-            print(
-                f"Average policy frequency: {self.tick_count / elapsed:.1f}Hz (target: {1 / self.step_dt}Hz)"
-            )
-            print("=" * 60)
+        # except KeyboardInterrupt:
+        #     print("\n\n" + "=" * 60)
+        #     print("Shutting down...")
+        #     print(f"Total inferences: {self.tick_count}")
+        #     print(f"Total ticks: {self.tick_count}")
+        #     print(f"Real time elapsed: {self.total_time:.2f}s")
+        #     print(
+        #         f"Average policy frequency: {self.tick_count / self.total_time:.1f}Hz (target: {1 / self.step_dt}Hz)"
+        #     )
+        #     print("=" * 60)
 
     def process_control_step(self):
         """Process one control step (called at control_freq Hz)."""
@@ -335,30 +343,24 @@ class Go2PolicyController(Node):
             )
         else:
             emergency_cond = (
-                self.controller_state.buttons[8]
-                and self.controller_state.buttons[9]
+                self.controller_state.buttons[0]
                 and self.run_policy
+                or self.violation
                 or self.emergency_mode
             )
-            policy_run_cond = (
-                self.controller_state.buttons[8] or self.controller_state.buttons[8]
-            )
+            policy_run_cond = self.controller_state.buttons[3]
 
         if emergency_cond or self.emergency_mode:
-            if not self.emergency_mode:
-                self.emergency_mode_start_time = self.get_clock().now()
             self.emergency_mode = True
             self.emergency_mode_control()
 
         if policy_run_cond:
             self.run_policy = True
 
-        if (self.curr_time - self.start_time).nanoseconds * 1e-9 <= self.time_to_stand:
+        if not self.run_policy:
             self.stand_control()
         # Run policy
-        elif (
-            self.curr_time - self.start_time
-        ).nanoseconds * 1e-9 >= self.time_to_stand and self.run_policy:
+        else:
             self.policy_control()
 
     def policy_control(self):
@@ -399,7 +401,7 @@ def main():
     )
 
     parser.add_argument(
-        "--sim", type=bool, default=True, help="Wether to use simulation or real robot"
+        "--sim", type=bool, default=False, help="Wether to use simulation or real robot"
     )
 
     parser.add_argument(

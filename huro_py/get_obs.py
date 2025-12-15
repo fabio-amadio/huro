@@ -101,9 +101,9 @@ def get_obs_low_state(
         obs[6:9] = [
             controller_msg.axes[1],  # forward velocity
             controller_msg.axes[0],  # lateral velocity (flip for correct direction)
-            controller_msg.axes[2],  # yaw rate
+            controller_msg.axes[3],  # yaw rate
         ]
-        obs[9] = 0.3 + controller_msg.axes[3] / 10
+        obs[9] = 0.3 + controller_msg.axes[4] / 10
 
     # Fill joint positions (obs[13:25]) in policy order
     obs[10:22] = current_joint_pos_policy - default_pos_policy
