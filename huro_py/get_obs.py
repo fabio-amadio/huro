@@ -50,7 +50,7 @@ def get_obs_low_state(lowstate_msg: LowState, controller_msg, height: float, pre
     default_pos_policy = mapper.default_pos_policy
 
     # FILLING OBS VECTOR
-    obs = np.zeros(52)
+    obs = np.zeros(50)
     
     # Base linear velocity (obs[0:3])
     
@@ -95,9 +95,9 @@ def get_obs_low_state(lowstate_msg: LowState, controller_msg, height: float, pre
     obs[22:34] = current_joint_vel_policy
     # Previous actions (obs[37:49]) - default to zero
     obs[34:46] = prev_actions
-    obs[46] = np.sin(2.0 * np.pi * phase)
-    obs[47] = np.cos(2.0 * np.pi * phase)
-    obs[48:52] = [
+    # obs[46] = np.sin(2.0 * np.pi * phase)
+    # obs[47] = np.cos(2.0 * np.pi * phase)
+    obs[46:50] = [
         float(lowstate_msg.foot_force[0]>30),
         float(lowstate_msg.foot_force[1]>30),
         float(lowstate_msg.foot_force[2]>30),
