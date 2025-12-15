@@ -16,17 +16,16 @@ int main(int argc, char **argv) {
   rclcpp::init(argc, argv);
 
   auto params = huro::Params();
-  params.fix_base = false;
   params.info_imu = false;
   params.info_motors = false;
   params.n_motors = 29;
+  params.sim_dt_ms = 1;
+  params.init_base_pos = {0.0, 0.0, 1.0};
   params.xml_filename = "g1/g1_29dof.xml";
-  params.sim_dt_ms = 2;
   params.lowstate_topic_name = "/lowstate";
   params.lowcmd_topic_name = "/lowcmd";
   params.odom_topic_name = "/odommodestate";
   params.base_link_name = "pelvis";
-  params.sole_link_name = "right_foot_point_contact";
   params.joint_names = {"left_hip_pitch_joint",
                         "left_hip_roll_joint",
                         "left_hip_yaw_joint",
