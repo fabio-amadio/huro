@@ -15,7 +15,6 @@ def get_obs_low_state(
     controller_msg,
     height: float,
     prev_actions: np.array,
-    phase: float,
     mapper: Mapper,
 ):
     """
@@ -36,8 +35,7 @@ def get_obs_low_state(
     - obs[10:22] : Joint positions relative to default (12 joints)
     - obs[22:34] : Joint velocities (12 joints)
     - obs[34:46] : Previous actions (12 values)
-    - obs[46:48] : Phases
-    - obs[48:52] : Foot contacts
+    - obs[46:50] : Foot contacts
     """
 
     # MAPPING ROBOT -> POLICY
@@ -111,9 +109,7 @@ def get_obs_low_state(
     obs[22:34] = current_joint_vel_policy
     # Previous actions (obs[37:49]) - default to zero
     obs[34:46] = prev_actions
-    obs[46] = np.sin(2.0 * np.pi * phase)
-    obs[47] = np.cos(2.0 * np.pi * phase)
-    obs[48:52] = [
+    obs[46:50] = [
         float(lowstate_msg.foot_force[0]>30),
         float(lowstate_msg.foot_force[1]>30),
         float(lowstate_msg.foot_force[2]>30),
