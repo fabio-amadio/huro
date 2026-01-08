@@ -1,3 +1,4 @@
+import os
 import launch
 from launch_ros.actions import Node
 from launch.actions import IncludeLaunchDescription
@@ -14,7 +15,13 @@ def generate_launch_description():
     )
 
     ## HURo Sim Node ##
-    sim_node = Node(package="huro", executable="sim_go2", name="sim_go2")
+    config = os.path.join(share_dir, "config", "go2_sim_params.yaml")
+    sim_node = Node(
+        package="huro",
+        executable="sim_go2",
+        name="sim_go2",
+        parameters=[config],
+    )
 
     return launch.LaunchDescription(
         [

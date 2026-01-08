@@ -1,0 +1,10 @@
+sim_g1:
+  ros__parameters:
+    robot_name: "g1"
+    lowstate_topic: "/lowstate"
+    lowcmd_topic: "/lowcmd"
+    odom_topic: "/odommodestate"
+    xml_filename: "g1/g1_29dof.xml"
+    q_init: [0.0, 0.0, 0.0]
+    sim_dt_ms: 1
+    n_motors: 29

@@ -1,0 +1,10 @@
+sim_go2:
+  ros__parameters:
+    robot_name: "go2"
+    lowstate_topic: "/lowstate"
+    lowcmd_topic: "/lowcmd"
+    odom_topic: "/sportmodestate"
+    xml_filename: "go2/go2.xml"
+    q_init: [0.0, 0.0, 0.0]
+    sim_dt_ms: 1
+    n_motors: 12

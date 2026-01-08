@@ -25,6 +25,7 @@ find_package(unitree_api REQUIRED)
 
 # MuJoCo
 find_package(mujoco REQUIRED)
+find_package(yaml-cpp REQUIRED)
 
 set(
   DEPENDENCY_LIST
@@ -37,6 +38,7 @@ set(
   tf2
   tf2_ros
   rosbag2_cpp
+  yaml-cpp
 )
 
 set(
@@ -156,6 +158,12 @@ install(
 ## Install Launch Files ##
 install(
   DIRECTORY launch
+  DESTINATION share/${PROJECT_NAME}
+)
+
+## Install Launch Files ##
+install(DIRECTORY
+  config
   DESTINATION share/${PROJECT_NAME}
 )
 

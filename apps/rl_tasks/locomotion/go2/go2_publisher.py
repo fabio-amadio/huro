@@ -56,8 +56,7 @@ class Go2PolicyController(Node):
             kd: Velocity gain/damping (default: 0.5)
             action_scale: Scale factor for policy actions (default: 0.25)
         """
-        params = []
-        super().__init__("go2_policy_controller", parameter_overrides=params)
+        super().__init__("go2_policy_controller")
 
         self.step_dt = 1 / 50  # policy freq = 50Hz
         self.control_gait = 1 / 500  # the phase updated at 2Hz
@@ -259,7 +258,7 @@ class Go2PolicyController(Node):
 
         for i in range(12):
             curr_kd = alpha * self.kd
-            curr_kp = alpha * self.kp
+            curr_kp = alpha * (100.0 * self.kp)
             # tau = curr_kp * (self.stand_pos[i] - q) - curr_kd * dq
             cmd.motor_cmd[i].mode = self.motors_on
             cmd.motor_cmd[i].q = self.stand_pos[i]
