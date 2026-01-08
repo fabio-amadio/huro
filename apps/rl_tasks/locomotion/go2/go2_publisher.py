@@ -65,7 +65,7 @@ class Go2PolicyController(Node):
         print(f"[INFO] use_sim_time: {use_sim_time}")
 
         self.step_dt = 1 / 50  # policy freq = 50Hz
-        self.run_policy = False
+        self.run_policy = True # set to false to rely on joy buttons to lauch the policy
         self.use_spacemouse = use_spacemouse
 
         # Emergency mode
@@ -364,7 +364,7 @@ class Go2PolicyController(Node):
         obs = get_obs_low_state(
             self.latest_low_state,
             self.controller_state,
-            height=0.40,
+            height=0.30,
             prev_actions=self.current_action,
             mapper=self.mapper,
         )
