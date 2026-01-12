@@ -143,6 +143,20 @@ install(
   DESTINATION lib/${PROJECT_NAME}
 )
 
+# OpenSoT Examples
+install(
+  PROGRAMS apps/opensot/g1_squat.py
+  DESTINATION lib/${PROJECT_NAME}
+)
+install(
+  PROGRAMS apps/opensot/g1_teleop.py
+  DESTINATION lib/${PROJECT_NAME}
+)
+install(
+  PROGRAMS apps/opensot/marker_teleop.py
+  DESTINATION lib/${PROJECT_NAME}
+)
+
 ## Generate Custom Message Types ##
 rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/SpaceMouseState.msg"

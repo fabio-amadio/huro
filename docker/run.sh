@@ -1,7 +1,21 @@
 #!/bin/bash
+# Copyright Ioannis Tsikelis
+#
+# Script to run HURo docker container
+
+# Usage: ./build.sh OR ./build.sh opensot
+
+IMAGE_TYPE=$1
+
+if [ "$IMAGE_TYPE" == "opensot" ]; then
+    echo "Running the OpenSoT HURo image..."
+    IMAGE_NAME="huro_opensot"
+else
+    echo "Running the base HURo image..."
+    IMAGE_NAME="huro"
+fi
 
 CONTAINER_NAME="huro_container"
-IMAGE_NAME="huro"
 
 xhost +
 
