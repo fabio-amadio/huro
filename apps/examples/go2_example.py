@@ -19,33 +19,33 @@ from huro_py.crc_go import Crc
 GO2_NUM_MOTOR = 12
 
 Kp = [
-    25.0,
-    25.0,
-    25.0,
-    25.0,
-    25.0,
-    25.0,
-    25.0,
-    25.0,
-    25.0,
-    25.0,
-    25.0,
-    25.0,
+    60.0,
+    60.0,
+    60.0,
+    60.0,
+    60.0,
+    60.0,
+    60.0,
+    60.0,
+    60.0,
+    60.0,
+    60.0,
+    60.0,
 ]
 
 Kd = [
-    0.5,
-    0.5,
-    0.5,
-    0.5,
-    0.5,
-    0.5,
-    0.5,
-    0.5,
-    0.5,
-    0.5,
-    0.5,
-    0.5,
+    5.0,
+    5.0,
+    5.0,
+    5.0,
+    5.0,
+    5.0,
+    5.0,
+    5.0,
+    5.0,
+    5.0,
+    5.0,
+    5.0,
 ]
 
 q_init = [
@@ -79,7 +79,7 @@ class MoveExample(Node):
         self.motor = [MotorState() for _ in range(GO2_NUM_MOTOR)]
 
         self.topic_name = (
-            "lowstate" if self.get_parameter_or("HIGH_FREQ", False) else "lf/lowstate"
+            "lowstate" 
         )
 
         self.lowcmd_pub = self.create_publisher(LowCmd, "/lowcmd", 10)

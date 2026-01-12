@@ -65,7 +65,7 @@ class Go2PolicyController(Node):
         print(f"[INFO] use_sim_time: {use_sim_time}")
 
         self.step_dt = 1 / 50  # policy freq = 50Hz
-        self.run_policy = True # set to false to rely on joy buttons to lauch the policy
+        self.run_policy = False # set to false to rely on joy buttons to lauch the policy
         self.use_spacemouse = use_spacemouse
 
         # Emergency mode
@@ -128,8 +128,10 @@ class Go2PolicyController(Node):
         self.latest_low_state = None
         self.controller_state = None
 
-        self.kp = 25.0  # Position gain
-        self.kd = 0.5  # Velocity gain
+        self.kp = 60.0  # Position gain
+        self.kd = 5.0  # Velocity gain
+        self.kp_p = 50.0  # Position gain
+        self.kd_p = 3.5  # Velocity gain
         self.action_scale = 0.25  # Scale policy output
 
         # Standing position (default joint positions but coud be different)
@@ -150,7 +152,7 @@ class Go2PolicyController(Node):
             ],
             dtype=float,
         )
-        self.time_to_stand = 4.0  # Time to reach the standing position
+        self.time_to_stand = 10.0  # Time to reach the standing position
 
         # Statistics - initialize BEFORE callbacks
         self.tick_count = 0
@@ -239,24 +241,21 @@ class Go2PolicyController(Node):
         if self.latest_low_state is None:
             return
         cmd = LowCmd()
-        r = min(
-            (self.get_clock().now() - self.start_time).nanoseconds
-            * 1e-9
-            / self.time_to_stand,
-            1,
-        )
-        alpha = 1.0 - (1.0 - r) ** 3
+        cmd.head[0] = 0xFE
+        cmd.head[1] = 0xEF
+        cmd.gpio = 0
+        ratio = min((self.curr_time - self.start_time).nanoseconds * 1e-9 / self.time_to_stand, 1.0)
+        self.last_commanded_positions = [(1.0 - ratio) * self.latest_low_state.motor_state[i].q + ratio * self.stand_pos[i] for i in range(12)]
 
         for i in range(12):
-            curr_kd = alpha * self.kd
-            curr_kp = alpha * self.kp
-            # tau = curr_kp * (self.stand_pos[i] - q) - curr_kd * dq
-            cmd.motor_cmd[i].mode = 1
-            cmd.motor_cmd[i].q = self.stand_pos[i]
-            cmd.motor_cmd[i].dq = 0.0
-            cmd.motor_cmd[i].kp = curr_kp
-            cmd.motor_cmd[i].kd = curr_kd
-            cmd.motor_cmd[i].tau = 0.0
+            motorcmd = cmd.motor_cmd[i]
+            motorcmd.mode = 1
+            current_q = self.latest_low_state.motor_state[i].q
+            motorcmd.q = self.last_commanded_positions[i]
+            motorcmd.dq = 0.0
+            motorcmd.tau = 0.0
+            motorcmd.kp = self.kp
+            motorcmd.kd = self.kd
 
         # Calculate CRC and publish
         cmd.crc = Crc(cmd)
@@ -282,9 +281,9 @@ class Go2PolicyController(Node):
         for i in range(12):
             cmd.motor_cmd[i].mode = 0x01  # PMSM mode
             cmd.motor_cmd[i].q = self.last_commanded_positions[i]
-            cmd.motor_cmd[i].kp = self.kp
+            cmd.motor_cmd[i].kp = self.kp_p
             cmd.motor_cmd[i].dq = 0.0
-            cmd.motor_cmd[i].kd = self.kd
+            cmd.motor_cmd[i].kd = self.kd_p
             cmd.motor_cmd[i].tau = 0.0
 
         # Calculate CRC and publish
@@ -348,10 +347,10 @@ class Go2PolicyController(Node):
             self.emergency_mode = True
             self.emergency_mode_control()
 
-        if policy_run_cond:
+        elif policy_run_cond:
             self.run_policy = True
 
-        if (self.curr_time - self.start_time).nanoseconds * 1e-9 <= self.time_to_stand:
+        elif (self.curr_time - self.start_time).nanoseconds * 1e-9 <= self.time_to_stand or self.run_policy == False:
             self.stand_control()
         # Run policy
         elif (
