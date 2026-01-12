@@ -255,8 +255,8 @@ class MoveExample(Node):
                 Cartesian(
                     contact_frame + "_kin",
                     self.model,
-                    contact_frame,
                     "world",
+                    contact_frame,
                     self.variables.getVariable("qddot"),
                 )
             )
