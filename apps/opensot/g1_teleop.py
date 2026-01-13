@@ -198,13 +198,13 @@ class MoveExample(Node):
         else:
             self.get_logger().error("Failed to call service")
 
-        self.joint_state_publisher = self.create_publisher(
-            JointState, "joint_states", 10
-        )
+        # self.joint_state_publisher = self.create_publisher(
+        #     JointState, "joint_states", 10
+        # )
 
         self.force_publishers = {}
 
-        self.base_link_broadcaster = TransformBroadcaster(self)
+        # self.base_link_broadcaster = TransformBroadcaster(self)
 
         ###################
         self.model = xbi.ModelInterface2(self.urdf)
@@ -374,8 +374,8 @@ class MoveExample(Node):
             )
 
     def publish(self, joint_state_msg, transform_msg, force_msgs=None):
-        self.joint_state_publisher.publish(joint_state_msg)
-        self.base_link_broadcaster.sendTransform(transform_msg)
+        # self.joint_state_publisher.publish(joint_state_msg)
+        # self.base_link_broadcaster.sendTransform(transform_msg)
 
         if force_msgs is not None:
             for contact_frame, force_msg in force_msgs.items():
@@ -393,7 +393,9 @@ class MoveExample(Node):
                 ratio = self.clamp(self.time / self.init_duration_s, 0.0, 1.0)
                 cmd = low_cmd.motor_cmd[i]
                 cmd.mode = self.motors_on
-                cmd.q = (1.0 - ratio) * self.motor[i].q + ratio * q_init[i]
+                # This produces an initial shock that makes the simulation fall
+                # cmd.q = (1.0 - ratio) * self.motor[i].q + ratio * q_init[i]
+                cmd.q = q_init[i]
                 cmd.dq = 0.0
                 cmd.tau = 0.0
                 cmd.kp = Kp[i]
@@ -471,7 +473,7 @@ class MoveExample(Node):
             msg.name = self.model.getJointNames()[1::]
             msg.position = self.q[7::]
             msg.header.stamp = self.get_clock().now().to_msg()
-            self.joint_state_publisher.publish(msg)
+            # self.joint_state_publisher.publish(msg)
 
             # Publish base link transform
             w_T_b = TransformStamped()
@@ -485,7 +487,7 @@ class MoveExample(Node):
             w_T_b.transform.rotation.y = self.q[4]
             w_T_b.transform.rotation.z = self.q[5]
             w_T_b.transform.rotation.w = self.q[6]
-            self.base_link_broadcaster.sendTransform(w_T_b)
+            # self.base_link_broadcaster.sendTransform(w_T_b)
 
             self.dq += ddq * dt
             #

@@ -97,25 +97,6 @@ Kd = [
     1.0,  # arms
 ]
 
-# q_init = [0.0 for _ in range(G1_NUM_MOTOR)]
-# q_init[0] = -0.6
-# q_init[3] = 1.2
-# q_init[4] = -0.6
-# q_init[6] = -0.6
-# q_init[9] = 1.2
-# q_init[10] = -0.6
-
-
-# q_init = [-3.42817396e-01, 2.31913421e-02,  9.70253372e-04, #hips
-#            4.31958795e-01, #knee
-#           -3.17440391e-01, -7.41453618e-02, # ankles
-#           -2.02988297e-01, -3.61669660e-02,  2.02979296e-02, #hips
-#            4.15024102e-01, #knee
-#           -1.28817156e-01, -1.57903448e-01, #ankles
-#            1.16415322e-10, -1.45519152e-11, -2.91038305e-11, # waist
-#            3.00000012e-01,  2.50000000e-01, -9.31322575e-10, 9.70000029e-01,  1.50000006e-01,  3.72529030e-09, -9.31322575e-10, # arm
-#            3.00000012e-01, -2.50000000e-01,  1.86264515e-09, 9.70000029e-01, -1.50000006e-01,  3.72529030e-09,  1.86264515e-09] # arm
-
 q_init = [
     -0.1,
     0.0,
@@ -175,11 +156,8 @@ class G1OpenSotExample(Node):
         # Rosbag
         # self.bag_motor = [MotorState() for _ in range(G1_NUM_MOTOR)]
 
-        self.topic_name = (
-            "lowstate" if self.get_parameter_or("HIGH_FREQ", False) else "lf/lowstate"
-        )
-
         self.lowcmd_pub = self.create_publisher(LowCmd, "/lowcmd", 10)
+        self.topic_name = "/lowstate"
         self.lowstate_sub = self.create_subscription(
             LowState, self.topic_name, self.low_state_handler, 10
         )
@@ -213,13 +191,13 @@ class G1OpenSotExample(Node):
         else:
             self.get_logger().error("Failed to call service")
 
-        self.joint_state_publisher = self.create_publisher(
-            JointState, "joint_states", 10
-        )
+        # self.joint_state_publisher = self.create_publisher(
+        #     JointState, "joint_states", 10
+        # )
 
         self.force_publishers = {}
 
-        self.base_link_broadcaster = TransformBroadcaster(self)
+        # self.base_link_broadcaster = TransformBroadcaster(self)
 
         ###################
         self.model = xbi.ModelInterface2(self.urdf)
@@ -379,8 +357,8 @@ class G1OpenSotExample(Node):
             )
 
     def publish(self, joint_state_msg, transform_msg, force_msgs=None):
-        self.joint_state_publisher.publish(joint_state_msg)
-        self.base_link_broadcaster.sendTransform(transform_msg)
+        # self.joint_state_publisher.publish(joint_state_msg)
+        # self.base_link_broadcaster.sendTransform(transform_msg)
 
         if force_msgs is not None:
             for contact_frame, force_msg in force_msgs.items():
@@ -398,7 +376,9 @@ class G1OpenSotExample(Node):
                 ratio = self.clamp(self.time / self.init_duration_s, 0.0, 1.0)
                 cmd = low_cmd.motor_cmd[i]
                 cmd.mode = self.motors_on
-                cmd.q = (1.0 - ratio) * self.motor[i].q + ratio * q_init[i]
+                # This produces an initial shock that makes the simulation fall
+                # cmd.q = (1.0 - ratio) * self.motor[i].q + ratio * q_init[i]
+                cmd.q = q_init[i]
                 cmd.dq = 0.0
                 cmd.tau = 0.0
                 cmd.kp = Kp[i]
@@ -449,7 +429,7 @@ class G1OpenSotExample(Node):
             msg.name = self.model.getJointNames()[1::]
             msg.position = self.q[7::]
             msg.header.stamp = self.get_clock().now().to_msg()
-            self.joint_state_publisher.publish(msg)
+            # self.joint_state_publisher.publish(msg)
 
             # Publish base link transform
             w_T_b = TransformStamped()
@@ -463,7 +443,7 @@ class G1OpenSotExample(Node):
             w_T_b.transform.rotation.y = self.q[4]
             w_T_b.transform.rotation.z = self.q[5]
             w_T_b.transform.rotation.w = self.q[6]
-            self.base_link_broadcaster.sendTransform(w_T_b)
+            # self.base_link_broadcaster.sendTransform(w_T_b)
 
             self.dq += ddq * dt
             #
@@ -527,7 +507,6 @@ class G1OpenSotExample(Node):
     #         self.bag_motor[i] = cmd_msg.motor_cmd[i].q
 
     def low_state_handler(self, msg: LowState):
-        # self.get_logger().info(str(self.motors_on))
         self.mode_machine = msg.mode_machine
         self.imu = msg.imu_state
         for i in range(G1_NUM_MOTOR):
