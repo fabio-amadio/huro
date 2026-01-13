@@ -5,6 +5,20 @@ sim_go2:
     lowcmd_topic: "/lowcmd"
     odom_topic: "/sportmodestate"
     xml_filename: "go2/go2.xml"
-    q_init: [0.0, 0.0, 0.0]
+    base_link_name: "base"
+    sole_link_name: "RR_point"
+    q_init:
+      - 0.005
+      - 0.72
+      - -1.4
+      - -0.005
+      - 0.72
+      - -1.4
+      - -0.005
+      - 0.72
+      - -1.4
+      - 0.005
+      - 0.72
+      - -1.4
     sim_dt_ms: 1
     n_motors: 12

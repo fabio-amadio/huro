@@ -29,6 +29,8 @@ public:
     this->declare_parameter("lowcmd_topic", rclcpp::PARAMETER_STRING);
     this->declare_parameter("odom_topic", rclcpp::PARAMETER_STRING);
     this->declare_parameter("xml_filename", rclcpp::PARAMETER_STRING);
+    this->declare_parameter("base_link_name", rclcpp::PARAMETER_STRING);
+    this->declare_parameter("sole_link_name", rclcpp::PARAMETER_STRING);
     this->declare_parameter("q_init", rclcpp::PARAMETER_DOUBLE_ARRAY);
     this->declare_parameter("sim_dt_ms", rclcpp::PARAMETER_INTEGER);
     this->declare_parameter("n_motors", rclcpp::PARAMETER_INTEGER);
@@ -38,9 +40,11 @@ public:
     lowcmd_topic_ = this->get_parameter("lowcmd_topic").as_string();
     odom_topic_ = this->get_parameter("odom_topic").as_string();
     xml_filename_ = this->get_parameter("xml_filename").as_string();
+    base_link_name_ = this->get_parameter("base_link_name").as_string();
+    sole_link_name_ = this->get_parameter("sole_link_name").as_string();
     q_init_ = this->get_parameter("q_init").as_double_array();
-    sim_dt_ms_ = this->get_parameter("sim_dt_ms").as_int();
-    n_motors_ = this->get_parameter("n_motors").as_int();
+    sim_dt_ms_ = static_cast<size_t>(this->get_parameter("sim_dt_ms").as_int());
+    n_motors_ = static_cast<size_t>(this->get_parameter("n_motors").as_int());
 
     // Initialize publishers and subscripbers
     lowstate_pub_ = this->create_publisher<LowStateMsg>(lowstate_topic_, 10);
@@ -79,7 +83,7 @@ protected:
       time_s_ += static_cast<double>(sim_dt_ms_) / 1000.0;
 
       // Calculate control
-      for (int i = 0; i < n_motors_; ++i) {
+      for (size_t i = 0; i < n_motors_; ++i) {
         int motor_mode = static_cast<int>(low_cmd_->motor_cmd[i].mode);
         mjtNum q_des = static_cast<mjtNum>(low_cmd_->motor_cmd[i].q);
         mjtNum qdot_des = static_cast<mjtNum>(low_cmd_->motor_cmd[i].dq);
@@ -125,7 +129,28 @@ protected:
     }
     mj_data_ = mj_makeData(mj_model_);
 
-    // Set robot position
+    // Set joint positions
+    for (size_t i = 0; i < n_motors_; ++i) {
+      mj_data_->qpos[7 + i] = static_cast<mjtNum>(q_init_[i]);
+      mj_data_->qvel[6 + i] = 0.0;
+    }
+
+    // Place robot on the floor
+    mjtNum z_dist = GetZDistanceFromSoleToBaseLink();
+    mj_data_->qpos[0] = 0.;
+    mj_data_->qpos[1] = 0.;
+    mj_data_->qpos[2] = z_dist;
+    mj_data_->qpos[3] = 1.;
+    mj_data_->qpos[4] = 0.;
+    mj_data_->qpos[5] = 0.;
+    mj_data_->qpos[6] = 0.;
+
+    mj_data_->qvel[0] = 0.;
+    mj_data_->qvel[1] = 0.;
+    mj_data_->qvel[2] = 0.;
+    mj_data_->qvel[3] = 0.;
+    mj_data_->qvel[4] = 0.;
+    mj_data_->qvel[5] = 0.;
   }
 
   OdometryMsg GenerateOdometryMsg() const {
@@ -181,7 +206,7 @@ protected:
     lowstate.imu_state.gyroscope[2] = omegaz;
 
     // Motor states
-    for (int i = 0; i < n_motors_; ++i) {
+    for (size_t i = 0; i < n_motors_; ++i) {
       float q = static_cast<float>(mj_data_->qpos[7 + i]);
       float qdot = static_cast<float>(mj_data_->qvel[6 + i]);
       float qddot = static_cast<float>(mj_data_->qacc[6 + i]);
@@ -202,7 +227,7 @@ protected:
     //   std::vector<std::string> foot_geom_names = {"FL", "FR", "RL", "RR"};
     //
     //   // Sum contact forces for each foot
-    //   for (int i = 0; i < mj_data_->ncon; ++i) {
+    //   for (size_t i = 0; i < mj_data_->ncon; ++i) {
     //     const mjContact &con = mj_data_->contact[i];
     //
     //     // Check contact
@@ -234,18 +259,39 @@ protected:
   }
 
 protected:
-  const int kLogInterval = 500; // Logging frequency
+  mjtNum GetZDistanceFromSoleToBaseLink() {
+    mj_fwdPosition(mj_model_, mj_data_);
+
+    int pelvis_id = mj_name2id(mj_model_, mjOBJ_BODY, base_link_name_.c_str());
+    int sole_id = mj_name2id(mj_model_, mjOBJ_BODY, sole_link_name_.c_str());
+
+    if (pelvis_id == -1 || sole_id == -1) {
+      std::string msg = "Invalid body name(s) during model z calculation";
+      RCLCPP_ERROR(this->get_logger(), msg.c_str());
+      return 0.0;
+    }
+
+    const mjtNum *pelvis_pos = mj_data_->xpos + 3 * pelvis_id;
+    const mjtNum *sole_pos = mj_data_->xpos + 3 * sole_id;
+
+    return pelvis_pos[2] - sole_pos[2];
+  }
+
+protected:
+  const size_t kLogInterval = 500; // Logging frequency
 
   std::string robot_name_;     // robot name (g1 or go2)
   std::string lowstate_topic_; // lostate topic name
   std::string lowcmd_topic_;   // lowcmd topic name
   std::string odom_topic_;     // Odometry topic name
   std::string xml_filename_;   // XML file description name
+  std::string base_link_name_; // Base link name
+  std::string sole_link_name_; // Sole link name (for z height calculation)
   std::vector<double> q_init_; // Initial joint position
-  int sim_dt_ms_;              // Sim dt
-  int n_motors_;               // Track loop count for logging
+  size_t sim_dt_ms_;           // Sim dt
+  size_t n_motors_;            // Track loop count for logging
   double time_s_;              // Running time count (in seconds)
-  int loop_count_;             // Track loop count for logging
+  size_t loop_count_;          // Track loop count for logging
   int mode_machine;
 
   std::shared_ptr<rclcpp::Publisher<LowStateMsg>> lowstate_pub_;
