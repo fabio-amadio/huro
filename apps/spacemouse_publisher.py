@@ -16,10 +16,10 @@ class SpaceMousePublisher(Node):
             SpaceMouseState, "spacemouse_state", 10
         )
         self.timer = self.create_timer(0.005, self.timer_callback)
-        self.device = pyspacemouse.open()
-        if not self.device:
+        try:
+            self.device = pyspacemouse.open()
+        except:
             self.get_logger().error("Failed to open SpaceMouse device.")
-            rclpy.shutdown()
 
     def timer_callback(self):
         state = pyspacemouse.read()
@@ -33,6 +33,18 @@ class SpaceMousePublisher(Node):
             msg.twist.angular.z = float(state.yaw)
             msg.button_1_pressed = bool(state.buttons[0])
             msg.button_2_pressed = bool(state.buttons[1])
+            self.tf_publisher.publish(msg)
+        else:
+            # TODO : Initialise this in init. Evaluate usefulness.
+            msg = SpaceMouseState()
+            msg.twist.linear.x = float(0.0)
+            msg.twist.linear.y = float(0.0)
+            msg.twist.linear.z = float(0.0)
+            msg.twist.angular.x = float(-1.0)
+            msg.twist.angular.y = float(1.0)
+            msg.twist.angular.z = float(-1.0)
+            msg.button_1_pressed = bool(False)
+            msg.button_2_pressed = bool(False)
             self.tf_publisher.publish(msg)
 
 

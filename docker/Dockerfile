@@ -13,6 +13,7 @@ RUN apt-get update && apt-get install -yy \
     python3-colcon-common-extensions \
     ros-${ROS_DISTRO}-xacro \
     ros-${ROS_DISTRO}-rviz2 \
+    ros-${ROS_DISTRO}-joy \
     ros-${ROS_DISTRO}-pcl-conversions \
     ros-${ROS_DISTRO}-rmw-cyclonedds-cpp \
     ros-${ROS_DISTRO}-rosidl-generator-dds-idl \
@@ -31,7 +32,7 @@ RUN apt-get update && apt-get install -yy \
     libhidapi-dev \
     && rm -rf /var/lib/apt/lists/*
 
-RUN pip install pyspacemouse torch
+RUN pip install pyspacemouse torch pyyaml onnxruntime
 
 # MuJoCo
 RUN git clone https://github.com/deepmind/mujoco.git && \
