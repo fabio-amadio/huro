@@ -57,7 +57,7 @@ class Go2PolicyController(Node):
             action_scale: Scale factor for policy actions (default: 0.25)
         """
         params = []
-        if sim == True:
+        if sim:
             params.append(rclpy.parameter.Parameter("use_sim_time", value=True))
         super().__init__("go2_policy_controller", parameter_overrides=params)
         # Verify we're using sim time if the sim param is set to True
@@ -65,13 +65,7 @@ class Go2PolicyController(Node):
         print(f"[INFO] use_sim_time: {use_sim_time}")
 
         self.step_dt = 1 / 50  # policy freq = 50Hz
-<<<<<<< HEAD
-        self.control_gait = 1 / 500  # the phase updated at 2Hz
-        self.phase = 0.0
-        self.run_policy = True
-=======
-        self.run_policy = False # set to false to rely on joy buttons to lauch the policy
->>>>>>> 2556520bd25a0afc2ee9351d54e28e2ab65405e2
+        self.run_policy = True # set to false to rely on joy buttons to lauch the policy
         self.use_spacemouse = use_spacemouse
 
         # Emergency mode
@@ -103,8 +97,12 @@ class Go2PolicyController(Node):
         print("[INFO] Policy loaded successfully")
 
         # Initialize the mapper for the joints and the actions
+        mapping_file = "physx_to_mujoco_go2.yaml"
+        if not sim:
+            mapping_file = "sim_to_real.yaml"
+
         mapping_path = policy_path = os.path.join(
-            share, "resources", "mappings", "go2", "physx_to_mujoco_go2.yaml"
+            share, "resources", "mappings", "go2", mapping_file
         )
 
         self.default_pos_sdk = np.array(
@@ -134,15 +132,10 @@ class Go2PolicyController(Node):
         self.latest_low_state = None
         self.controller_state = None
 
-<<<<<<< HEAD
-        self.kp = 25.0  # Position gain
-        self.kd = 0.5  # Velocity gain
-=======
         self.kp = 60.0  # Position gain
         self.kd = 5.0  # Velocity gain
         self.kp_p = 50.0  # Position gain
         self.kd_p = 3.5  # Velocity gain
->>>>>>> 2556520bd25a0afc2ee9351d54e28e2ab65405e2
         self.action_scale = 0.25  # Scale policy output
 
         # Standing position (default joint positions but coud be different)
@@ -163,7 +156,7 @@ class Go2PolicyController(Node):
             ],
             dtype=float,
         )
-        self.time_to_stand = 10.0  # Time to reach the standing position
+        self.time_to_stand = 5.0  # Time to reach the standing position
 
         # Statistics - initialize BEFORE callbacks
         self.tick_count = 0
@@ -216,7 +209,7 @@ class Go2PolicyController(Node):
             return
 
         # Calculate progress (0 to 1)
-        release_duration = 2
+        release_duration = 5
         elapsed = (
             self.get_clock().now() - self.emergency_mode_start_time
         ).nanoseconds * 1e-9
@@ -261,7 +254,6 @@ class Go2PolicyController(Node):
         for i in range(12):
             motorcmd = cmd.motor_cmd[i]
             motorcmd.mode = 1
-            current_q = self.latest_low_state.motor_state[i].q
             motorcmd.q = self.last_commanded_positions[i]
             motorcmd.dq = 0.0
             motorcmd.tau = 0.0
@@ -349,7 +341,7 @@ class Go2PolicyController(Node):
                 or self.emergency_mode
             )
             policy_run_cond = (
-                self.controller_state.buttons[8] or self.controller_state.buttons[8]
+                self.controller_state.buttons[8] or self.controller_state.buttons[9]
             )
 
         if emergency_cond or self.emergency_mode:

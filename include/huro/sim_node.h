@@ -317,11 +317,7 @@ protected:
 
   double time_s_; // Running time count (in seconds)
   int mode_machine;
-<<<<<<< HEAD
-  int start_sim_ = 1;
-=======
   int start_sim_ = 1; // set it to 0 to launch the sim only if joy buttons are pressed
->>>>>>> 2556520bd25a0afc2ee9351d54e28e2ab65405e2
 
   std::shared_ptr<rclcpp::Publisher<LowStateMsg>> lowstate_pub_;
   std::shared_ptr<rclcpp::Publisher<OdometryMsg>> odom_pub_;

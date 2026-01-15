@@ -109,15 +109,12 @@ def get_obs_low_state(
     obs[22:34] = current_joint_vel_policy
     # Previous actions (obs[37:49]) - default to zero
     obs[34:46] = prev_actions
-<<<<<<< HEAD
-
-=======
->>>>>>> 2556520bd25a0afc2ee9351d54e28e2ab65405e2
+    # see the best threshold for real robot
     obs[46:50] = [
-        float(lowstate_msg.foot_force[0]>30),
-        float(lowstate_msg.foot_force[1]>30),
-        float(lowstate_msg.foot_force[2]>30),
-        float(lowstate_msg.foot_force[3]>30)
+        float(lowstate_msg.foot_force[0]>10),
+        float(lowstate_msg.foot_force[1]>10),
+        float(lowstate_msg.foot_force[2]>10),
+        float(lowstate_msg.foot_force[3]>10)
     ]
 
     return obs
