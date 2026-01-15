@@ -23,7 +23,7 @@ import os
 import time
 
 from unitree_api.msg import Request
-from unitree_go.msg import LowCmd, LowState, SportModeState
+from unitree_go.msg import LowCmd, LowState
 from huro.msg import SpaceMouseState
 
 
@@ -67,7 +67,7 @@ class Go2PolicyController(Node):
         self.step_dt = 1 / 50  # policy freq = 50Hz
         self.control_gait = 1 / 500  # the phase updated at 2Hz
         self.phase = 0.0
-        self.run_policy = False
+        self.run_policy = True
         self.use_spacemouse = use_spacemouse
 
         # Emergency mode
@@ -80,7 +80,7 @@ class Go2PolicyController(Node):
 
         if policy_name is None:
             if training_type == "asymmetric":
-                policy_name = "policy_asymmetric6.pt"
+                policy_name = "policy_asymmetric7.pt"
             elif training_type == "student":
                 policy_name = "policy_student.pt"
             else:
@@ -132,7 +132,7 @@ class Go2PolicyController(Node):
 
         self.kp = 25.0  # Position gain
         self.kd = 0.5  # Velocity gain
-        self.action_scale = 0.5  # Scale policy output
+        self.action_scale = 0.25  # Scale policy output
 
         # Standing position (default joint positions but coud be different)
         self.stand_pos = np.array(
@@ -368,7 +368,7 @@ class Go2PolicyController(Node):
         obs = get_obs_low_state(
             self.latest_low_state,
             self.controller_state,
-            height=0.40,
+            height=0.30,
             prev_actions=self.current_action,
             phase=self.phase,
             mapper=self.mapper,

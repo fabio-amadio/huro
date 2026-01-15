@@ -317,7 +317,7 @@ protected:
 
   double time_s_; // Running time count (in seconds)
   int mode_machine;
-  int start_sim_ = 0;
+  int start_sim_ = 1;
 
   std::shared_ptr<rclcpp::Publisher<LowStateMsg>> lowstate_pub_;
   std::shared_ptr<rclcpp::Publisher<OdometryMsg>> odom_pub_;
