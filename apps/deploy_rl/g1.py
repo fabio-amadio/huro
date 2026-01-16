@@ -222,10 +222,12 @@ class G1PolicyRunner(Node):
 
         if not self.run_policy:
             for name in JOINT_NAMES:
+                ratio = self.clamp(self.time / self.init_duration_s, 0.0, 1.0)
                 idx = self.cfg[name]["index"]
                 cmd = low_cmd.motor_cmd[idx]
                 cmd.mode = self.motors_on
-                cmd.q = q_start[idx]
+                cmd.q = (1.0 - ratio) * self.motor[idx].q + ratio * q_start[idx]
+                # cmd.q = q_start[idx]
                 cmd.dq = 0.0
                 cmd.tau = 0.0
                 cmd.kp = Kp[idx]
@@ -305,7 +307,11 @@ class G1PolicyRunner(Node):
             joint_vel_rel[idx] = self.motor[idx].dq - 0.0
 
         command = np.array(
-            [self.joystick.axes[3], self.joystick.axes[2], self.joystick.axes[0] * 0.5]
+            [
+                self.joystick.axes[3] * 0.7,
+                self.joystick.axes[2] * 0.7,
+                self.joystick.axes[0] * 0.4,
+            ]
         )
 
         return np.concatenate(
